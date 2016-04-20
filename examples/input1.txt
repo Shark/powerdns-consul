@@ -1,0 +1,5 @@
+HELO  2
+Q	bla.test.sh4rk.pw	IN	ALL	-1	203.0.113.210	
+Q	bla.test.sh4rk.pw	IN	A	-1	203.0.113.210	
+Q	bla.test.sh4rk.pw	IN	MX	-1	203.0.113.210	
+Q	another.test.sh4rk.pw	IN	SOA	-1	203.0.113.210	
