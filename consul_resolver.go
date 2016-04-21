@@ -15,11 +15,13 @@ type ConsulResolver struct {
   client  *api.Client
   hostname string
   hostmasterEmailAddress string
+  defaultTTL uint32
 }
 
 type entry struct {
   entry_type string
-  value string
+  ttl uint32
+  payload string
 }
 
 type soaEntry struct {
@@ -33,6 +35,11 @@ type soaEntry struct {
   InternalSnModifyIndex uint64
   InternalSnDate int
   InternalSnVersion uint32
+}
+
+type value struct {
+  TTL *uint32
+  Payload *string
 }
 
 func allZones(client *api.Client) (zones []string, err error) {
@@ -100,28 +107,71 @@ func findZone(zones []string, name string) (zone string, remainder string, err e
   return zone, remainder, nil
 }
 
-func findZoneEntries(client *api.Client, zone string, remainder string, filter_entry_type string) (entries []*entry, err error) {
-  prefix := fmt.Sprintf("zones/%s/%s", zone, remainder)
-  pairs, _, err := client.KV().List(prefix, nil)
+func findZoneEntries(client *api.Client, zone string, remainder string, filter_entry_type string, defaultTTL uint32) (entries []*entry, err error) {
+  var pairs []*api.KVPair
 
-  if err != nil {
-    return nil, err
+  if remainder != "" {
+    prefix := fmt.Sprintf("zones/%s/%s", zone, remainder)
+    pairs, _, err = client.KV().List(prefix, nil)
+
+    if err != nil {
+      return nil, err
+    }
+  } else {
+    prefix := fmt.Sprintf("zones/%s", zone)
+    unfilteredPairs, _, err := client.KV().List(prefix, nil)
+
+    if err != nil {
+      return nil, err
+    }
+
+    for _, pair := range unfilteredPairs {
+      key_tokens := strings.Split(pair.Key, "/")
+
+      if len(key_tokens) == 3 { // discard entries for subdomains
+        pairs = append(pairs, pair)
+      }
+    }
   }
+
+
 
   for _, pair := range pairs {
     entry_type_tokens := strings.Split(pair.Key, "/")
     entry_type := entry_type_tokens[len(entry_type_tokens)-1]
 
     if filter_entry_type == "ANY" || entry_type == filter_entry_type {
-      entry := &entry{entry_type, string(pair.Value)}
-      entries = append(entries, entry)
+      values_in_entry := make([]value, 0)
+      err = json.Unmarshal(pair.Value, &values_in_entry)
+
+      if err != nil {
+        log.Errorf("Discarding key %s: %v", pair.Key, err)
+        continue
+      }
+
+      for _, value := range values_in_entry {
+        var ttl uint32
+        if value.TTL == nil {
+          ttl = defaultTTL
+        } else {
+          ttl = *value.TTL
+        }
+
+        if value.Payload == nil {
+          log.Errorf("Discarding entry in key %s because payload is missing", pair.Key)
+          continue
+        }
+
+        entry := &entry{entry_type, ttl, *value.Payload}
+        entries = append(entries, entry)
+      }
     }
   }
 
   return entries, nil
 }
 
-func getSOAEntry(client *api.Client, zone string, hostname string, hostmasterEmailAddress string) (entry *entry, err error) {
+func getSOAEntry(client *api.Client, zone string, hostname string, hostmasterEmailAddress string, defaultTTL uint32) (entry *entry, err error) {
   prefix := fmt.Sprintf("zones/%s", zone)
   _, meta, err := client.KV().List(prefix, nil)
 
@@ -165,6 +215,7 @@ func getSOAEntry(client *api.Client, zone string, hostname string, hostmasterEma
         newSnVersion = 0
       } else {
         newSnDate = soa.InternalSnDate
+        // TODO: what about newSnVersion > 99?
         newSnVersion = soa.InternalSnVersion + 1
       }
 
@@ -195,7 +246,7 @@ func getSOAEntry(client *api.Client, zone string, hostname string, hostmasterEma
     }
 
     sn := formatSoaSn(snDate, snVersion)
-    soa = soaEntry{hostname, hostmasterEmailAddress, sn, 1200, 180, 1209600, 60, lastModifyIndex, snDate, snVersion}
+    soa = soaEntry{hostname, hostmasterEmailAddress, sn, 1200, 180, 1209600, int32(defaultTTL), lastModifyIndex, snDate, snVersion}
 
     json, err := json.Marshal(soa)
 
@@ -209,7 +260,7 @@ func getSOAEntry(client *api.Client, zone string, hostname string, hostmasterEma
     }
   }
 
-  soaAsEntry := formatSoaEntry(&soa)
+  soaAsEntry := formatSoaEntry(&soa, defaultTTL)
   return soaAsEntry, nil
 }
 
@@ -224,10 +275,10 @@ func formatSoaSn(snDate int, snVersion uint32) (sn uint32) {
   return uint32(soaSnInt)
 }
 
-func formatSoaEntry(sEntry *soaEntry) (*entry) {
+func formatSoaEntry(sEntry *soaEntry, ttl uint32) (*entry) {
   value := fmt.Sprintf("%s %s %d %d %d %d %d", sEntry.NameServer, sEntry.EmailAddr, sEntry.Sn, sEntry.Refresh, sEntry.Retry, sEntry.Expiry, sEntry.Nx)
 
-  return &entry{"SOA", value}
+  return &entry{"SOA", ttl, value}
 }
 
 func getCurrentDateFormatted() (int) {
@@ -265,14 +316,14 @@ func (cr *ConsulResolver) Resolve(request *PdnsRequest) (responses []*PdnsRespon
     return make([]*PdnsResponse, 0), nil
   }
 
-  entries, err := findZoneEntries(cr.client, zone, remainder, request.qtype)
+  entries, err := findZoneEntries(cr.client, zone, remainder, request.qtype, cr.defaultTTL)
 
   if err != nil {
     return nil, err
   }
 
   if remainder == "" && (request.qtype == "ANY" || request.qtype == "SOA") {
-    soaEntry, err := getSOAEntry(cr.client, zone, cr.hostname, cr.hostmasterEmailAddress)
+    soaEntry, err := getSOAEntry(cr.client, zone, cr.hostname, cr.hostmasterEmailAddress, cr.defaultTTL)
 
     if err != nil {
       return nil, err
@@ -285,7 +336,7 @@ func (cr *ConsulResolver) Resolve(request *PdnsRequest) (responses []*PdnsRespon
 
   responses = make([]*PdnsResponse, len(entries))
   for index, entry := range entries {
-    response := &PdnsResponse{request.qname, "IN", entry.entry_type, "60", "1", entry.value}
+    response := &PdnsResponse{request.qname, "IN", entry.entry_type, strconv.Itoa(int(entry.ttl)), "1", entry.payload}
     responses[index] = response
     log.Infof("Sending response: %v", response)
   }

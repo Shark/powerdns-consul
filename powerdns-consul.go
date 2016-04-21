@@ -14,6 +14,7 @@ type config struct {
   Hostname string
   HostmasterEmailAddress string
   ConsulAddress string
+  DefaultTTL uint32
 }
 
 func main() {
@@ -46,7 +47,7 @@ func main() {
     panic(fmt.Sprintf("Unable to instantiate consul client: %v", err))
   }
 
-  resolver := &ConsulResolver{client, curConfig.Hostname, curConfig.HostmasterEmailAddress}
+  resolver := &ConsulResolver{client, curConfig.Hostname, curConfig.HostmasterEmailAddress, curConfig.DefaultTTL}
 
   handler := &PowerDNSHandler{resolver.Resolve}
   handler.Handle(os.Stdin, os.Stdout)
