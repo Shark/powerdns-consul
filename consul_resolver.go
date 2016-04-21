@@ -112,7 +112,7 @@ func findZoneEntries(client *api.Client, zone string, remainder string, filter_e
     entry_type_tokens := strings.Split(pair.Key, "/")
     entry_type := entry_type_tokens[len(entry_type_tokens)-1]
 
-    if filter_entry_type == "ALL" || entry_type == filter_entry_type {
+    if filter_entry_type == "ANY" || entry_type == filter_entry_type {
       entry := &entry{entry_type, string(pair.Value)}
       entries = append(entries, entry)
     }
@@ -246,6 +246,8 @@ func getCurrentDateFormatted() (int) {
 }
 
 func (cr *ConsulResolver) Resolve(request *PdnsRequest) (responses []*PdnsResponse, err error) {
+  log.Infof("Received request: %v", request)
+
   zones, err := allZones(cr.client)
 
   if err != nil {
@@ -269,7 +271,7 @@ func (cr *ConsulResolver) Resolve(request *PdnsRequest) (responses []*PdnsRespon
     return nil, err
   }
 
-  if remainder == "" && (request.qtype == "ALL" || request.qtype == "SOA") {
+  if remainder == "" && (request.qtype == "ANY" || request.qtype == "SOA") {
     soaEntry, err := getSOAEntry(cr.client, zone, cr.hostname, cr.hostmasterEmailAddress)
 
     if err != nil {
@@ -283,7 +285,9 @@ func (cr *ConsulResolver) Resolve(request *PdnsRequest) (responses []*PdnsRespon
 
   responses = make([]*PdnsResponse, len(entries))
   for index, entry := range entries {
-    responses[index] = &PdnsResponse{request.qname, "IN", entry.entry_type, "60", "1", entry.value}
+    response := &PdnsResponse{request.qname, "IN", entry.entry_type, "60", "1", entry.value}
+    responses[index] = response
+    log.Infof("Sending response: %v", response)
   }
 
   return responses, nil
