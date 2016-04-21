@@ -3,20 +3,51 @@ package main
 import (
   "os"
   "flag"
+  "fmt"
+  "encoding/json"
+  "io/ioutil"
   "github.com/hashicorp/consul/api"
+  log "github.com/golang/glog"
 )
 
-var client, err = api.NewClient(api.DefaultConfig())
-var resolver = &ConsulResolver{client}
-
-func lookup(request *PdnsRequest) (responses []*PdnsResponse, err error) {
-  return resolver.Resolve(request)
+type config struct {
+  Hostname string
+  HostmasterEmailAddress string
+  ConsulAddress string
 }
 
 func main() {
+  configFilePath := flag.String("config", "/etc/powerdns-consul.json", "path to the config file")
   flag.Parse()
   flag.Lookup("logtostderr").Value.Set("true")
 
-  handler := &PowerDNSHandler{lookup}
+  if _, err := os.Stat(*configFilePath); os.IsNotExist(err) {
+    panic(fmt.Sprintf("Unable to read config from %s: file does not exist", *configFilePath))
+  }
+
+  configFileContents, err := ioutil.ReadFile(*configFilePath)
+  if err != nil {
+    panic(fmt.Sprintf("Unable to read config file from %s: %v", *configFilePath, err))
+  }
+
+  var curConfig config
+  err = json.Unmarshal(configFileContents, &curConfig)
+  if err != nil {
+    panic(fmt.Sprintf("Unable to read config file from: %s: %v", *configFilePath, err))
+  }
+
+  log.Infof("Using Hostname: %s", curConfig.Hostname)
+  log.Infof("Using HostmasterEmailAddress: %s", curConfig.HostmasterEmailAddress)
+  log.Infof("Using ConsulAddress: %s", curConfig.ConsulAddress)
+
+  client, err := api.NewClient(&api.Config{Address: curConfig.ConsulAddress})
+
+  if err != nil {
+    panic(fmt.Sprintf("Unable to instantiate consul client: %v", err))
+  }
+
+  resolver := &ConsulResolver{client, curConfig.Hostname, curConfig.HostmasterEmailAddress}
+
+  handler := &PowerDNSHandler{resolver.Resolve}
   handler.Handle(os.Stdin, os.Stdout)
 }

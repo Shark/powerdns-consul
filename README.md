@@ -18,7 +18,8 @@ Some of the PowerDNS-related code is inspired by [mindreframer's work](https://g
 
 ## Usage
 
-WIP.
+1. Customize the `powerdns-consul.json.example` configuration
+2. Execute `./powerdns-consul -config=/path/to/powerdns-consul.json`
 
 ## Contributing
 1. Fork it!

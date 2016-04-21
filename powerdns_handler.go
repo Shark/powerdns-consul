@@ -115,7 +115,7 @@ func (h *PowerDNSHandler) Handle(in io.Reader, out io.Writer) {
 
     switch request.kind {
     case KIND_Q:
-      responses, err := lookup(request)
+      responses, err := h.lookupCallback(request)
       if err != nil {
         log.Errorf("Query for %v failed: %v", request.qname, err)
         h.write(out, FAIL_REPLY)
