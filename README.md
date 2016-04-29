@@ -14,7 +14,11 @@ Some of the PowerDNS-related code is inspired by [mindreframer's work](https://g
 
 - Clone the repository in your `$GOPATH/src/github.com/Shark/powerdns-consul`
 - Run `go get .`
-- Run `go build .`
+- Run `make`
+
+## Running the tests
+
+Run `make test`
 
 ## Usage
 
