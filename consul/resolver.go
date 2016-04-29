@@ -28,7 +28,7 @@ type Query struct {
   Type string
 }
 
-type ConsulEntry struct {
+type Entry struct {
   Type string
   Ttl uint32
   Payload string
@@ -117,7 +117,7 @@ func findZone(zones []string, name string) (zone string, remainder string, err e
   return zone, remainder, nil
 }
 
-func findZoneEntries(client *api.Client, zone string, remainder string, filter_entry_type string, defaultTTL uint32) (entries []*ConsulEntry, err error) {
+func findZoneEntries(client *api.Client, zone string, remainder string, filter_entry_type string, defaultTTL uint32) (entries []*Entry, err error) {
   var pairs []*api.KVPair
 
   if remainder != "" {
@@ -172,7 +172,7 @@ func findZoneEntries(client *api.Client, zone string, remainder string, filter_e
           continue
         }
 
-        entry := &ConsulEntry{entry_type, ttl, *value.Payload}
+        entry := &Entry{entry_type, ttl, *value.Payload}
         entries = append(entries, entry)
       }
     }
@@ -181,7 +181,7 @@ func findZoneEntries(client *api.Client, zone string, remainder string, filter_e
   return entries, nil
 }
 
-func getSOAEntry(client *api.Client, zone string, hostname string, hostmasterEmailAddress string, defaultTTL uint32) (entry *ConsulEntry, err error) {
+func getSOAEntry(client *api.Client, zone string, hostname string, hostmasterEmailAddress string, defaultTTL uint32) (entry *Entry, err error) {
   prefix := fmt.Sprintf("zones/%s", zone)
   _, meta, err := client.KV().List(prefix, nil)
 
@@ -285,10 +285,10 @@ func formatSoaSn(snDate int, snVersion uint32) (sn uint32) {
   return uint32(soaSnInt)
 }
 
-func formatSoaEntry(sEntry *soaEntry, ttl uint32) (*ConsulEntry) {
+func formatSoaEntry(sEntry *soaEntry, ttl uint32) (*Entry) {
   value := fmt.Sprintf("%s %s %d %d %d %d %d", sEntry.NameServer, sEntry.EmailAddr, sEntry.Sn, sEntry.Refresh, sEntry.Retry, sEntry.Expiry, sEntry.Nx)
 
-  return &ConsulEntry{"SOA", ttl, value}
+  return &Entry{"SOA", ttl, value}
 }
 
 func getCurrentDateFormatted() (int) {
@@ -316,7 +316,7 @@ func NewResolver(config *ResolverConfig) (*Resolver) {
   return &Resolver{config, client}
 }
 
-func (cr *Resolver) Resolve(query *Query) (entries []*ConsulEntry, err error) {
+func (cr *Resolver) Resolve(query *Query) (entries []*Entry, err error) {
   log.Infof("Received query: %v", query)
 
   zones, err := allZones(cr.client)
@@ -333,7 +333,7 @@ func (cr *Resolver) Resolve(query *Query) (entries []*ConsulEntry, err error) {
   }
 
   if zone == "" {
-    return make([]*ConsulEntry, 0), nil
+    return make([]*Entry, 0), nil
   }
 
   entries, err = findZoneEntries(cr.client, zone, remainder, query.Type, cr.Config.DefaultTTL)
@@ -349,7 +349,7 @@ func (cr *Resolver) Resolve(query *Query) (entries []*ConsulEntry, err error) {
       return nil, err
     }
 
-    entries = append([]*ConsulEntry{soaEntry}, entries...)
+    entries = append([]*Entry{soaEntry}, entries...)
   }
 
   log.Infof("got %d entries", len(entries))
