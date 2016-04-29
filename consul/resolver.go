@@ -12,10 +12,8 @@ import (
 )
 
 type Resolver struct {
-  Client  *api.Client
-  Hostname string
-  HostmasterEmailAddress string
-  DefaultTTL uint32
+  Config *ResolverConfig
+  client *api.Client
 }
 
 type ResolverConfig struct {
@@ -308,10 +306,20 @@ func getCurrentDateFormatted() (int) {
   return date
 }
 
+func NewResolver(config *ResolverConfig) (*Resolver) {
+  client, err := api.NewClient(&api.Config{Address: config.ConsulAddress})
+
+  if err != nil {
+    panic(fmt.Sprintf("Unable to instantiate Consul client: %v", err))
+  }
+
+  return &Resolver{config, client}
+}
+
 func (cr *Resolver) Resolve(query *Query) (entries []*ConsulEntry, err error) {
   log.Infof("Received query: %v", query)
 
-  zones, err := allZones(cr.Client)
+  zones, err := allZones(cr.client)
 
   if err != nil {
     return nil, err
@@ -328,14 +336,14 @@ func (cr *Resolver) Resolve(query *Query) (entries []*ConsulEntry, err error) {
     return make([]*ConsulEntry, 0), nil
   }
 
-  entries, err = findZoneEntries(cr.Client, zone, remainder, query.Type, cr.DefaultTTL)
+  entries, err = findZoneEntries(cr.client, zone, remainder, query.Type, cr.Config.DefaultTTL)
 
   if err != nil {
     return nil, err
   }
 
   if remainder == "" && (query.Type == "ANY" || query.Type == "SOA") {
-    soaEntry, err := getSOAEntry(cr.Client, zone, cr.Hostname, cr.HostmasterEmailAddress, cr.DefaultTTL)
+    soaEntry, err := getSOAEntry(cr.client, zone, cr.Config.Hostname, cr.Config.HostmasterEmailAddress, cr.Config.DefaultTTL)
 
     if err != nil {
       return nil, err

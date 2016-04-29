@@ -7,7 +7,6 @@ import (
   "encoding/json"
   "io/ioutil"
   "strconv"
-  "github.com/hashicorp/consul/api"
   log "github.com/golang/glog"
   "github.com/Shark/powerdns-consul/consul"
   "github.com/Shark/powerdns-consul/pdns"
@@ -58,13 +57,7 @@ func main() {
   log.Infof("Using HostmasterEmailAddress: %s", curConfig.HostmasterEmailAddress)
   log.Infof("Using ConsulAddress: %s", curConfig.ConsulAddress)
 
-  client, err := api.NewClient(&api.Config{Address: curConfig.ConsulAddress})
-
-  if err != nil {
-    panic(fmt.Sprintf("Unable to instantiate consul client: %v", err))
-  }
-
-  resolver := &consul.Resolver{client, curConfig.Hostname, curConfig.HostmasterEmailAddress, curConfig.DefaultTTL}
+  resolver := consul.NewResolver(&curConfig)
 
   handler := &pdns.Handler{resolveTransform(resolver)}
   handler.Handle(os.Stdin, os.Stdout)
