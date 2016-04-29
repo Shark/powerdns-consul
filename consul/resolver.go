@@ -9,7 +9,6 @@ import (
   "strconv"
   "github.com/hashicorp/consul/api"
   log "github.com/golang/glog"
-  "github.com/Shark/powerdns-consul/pdns"
 )
 
 type Resolver struct {
@@ -19,10 +18,22 @@ type Resolver struct {
   DefaultTTL uint32
 }
 
-type entry struct {
-  entry_type string
-  ttl uint32
-  payload string
+type ResolverConfig struct {
+  Hostname string
+  HostmasterEmailAddress string
+  ConsulAddress string
+  DefaultTTL uint32
+}
+
+type Query struct {
+  Name string
+  Type string
+}
+
+type ConsulEntry struct {
+  Type string
+  Ttl uint32
+  Payload string
 }
 
 type soaEntry struct {
@@ -108,7 +119,7 @@ func findZone(zones []string, name string) (zone string, remainder string, err e
   return zone, remainder, nil
 }
 
-func findZoneEntries(client *api.Client, zone string, remainder string, filter_entry_type string, defaultTTL uint32) (entries []*entry, err error) {
+func findZoneEntries(client *api.Client, zone string, remainder string, filter_entry_type string, defaultTTL uint32) (entries []*ConsulEntry, err error) {
   var pairs []*api.KVPair
 
   if remainder != "" {
@@ -163,7 +174,7 @@ func findZoneEntries(client *api.Client, zone string, remainder string, filter_e
           continue
         }
 
-        entry := &entry{entry_type, ttl, *value.Payload}
+        entry := &ConsulEntry{entry_type, ttl, *value.Payload}
         entries = append(entries, entry)
       }
     }
@@ -172,7 +183,7 @@ func findZoneEntries(client *api.Client, zone string, remainder string, filter_e
   return entries, nil
 }
 
-func getSOAEntry(client *api.Client, zone string, hostname string, hostmasterEmailAddress string, defaultTTL uint32) (entry *entry, err error) {
+func getSOAEntry(client *api.Client, zone string, hostname string, hostmasterEmailAddress string, defaultTTL uint32) (entry *ConsulEntry, err error) {
   prefix := fmt.Sprintf("zones/%s", zone)
   _, meta, err := client.KV().List(prefix, nil)
 
@@ -276,10 +287,10 @@ func formatSoaSn(snDate int, snVersion uint32) (sn uint32) {
   return uint32(soaSnInt)
 }
 
-func formatSoaEntry(sEntry *soaEntry, ttl uint32) (*entry) {
+func formatSoaEntry(sEntry *soaEntry, ttl uint32) (*ConsulEntry) {
   value := fmt.Sprintf("%s %s %d %d %d %d %d", sEntry.NameServer, sEntry.EmailAddr, sEntry.Sn, sEntry.Refresh, sEntry.Retry, sEntry.Expiry, sEntry.Nx)
 
-  return &entry{"SOA", ttl, value}
+  return &ConsulEntry{"SOA", ttl, value}
 }
 
 func getCurrentDateFormatted() (int) {
@@ -297,8 +308,8 @@ func getCurrentDateFormatted() (int) {
   return date
 }
 
-func (cr *Resolver) Resolve(request *pdns.Request) (responses []*pdns.Response, err error) {
-  log.Infof("Received request: %v", request)
+func (cr *Resolver) Resolve(query *Query) (entries []*ConsulEntry, err error) {
+  log.Infof("Received query: %v", query)
 
   zones, err := allZones(cr.Client)
 
@@ -306,7 +317,7 @@ func (cr *Resolver) Resolve(request *pdns.Request) (responses []*pdns.Response, 
     return nil, err
   }
 
-  zone, remainder, err := findZone(zones, request.Qname)
+  zone, remainder, err := findZone(zones, query.Name)
   log.Infof("zone: %s, remainder: %s", zone, remainder)
 
   if err != nil {
@@ -314,33 +325,26 @@ func (cr *Resolver) Resolve(request *pdns.Request) (responses []*pdns.Response, 
   }
 
   if zone == "" {
-    return make([]*pdns.Response, 0), nil
+    return make([]*ConsulEntry, 0), nil
   }
 
-  entries, err := findZoneEntries(cr.Client, zone, remainder, request.Qtype, cr.DefaultTTL)
+  entries, err = findZoneEntries(cr.Client, zone, remainder, query.Type, cr.DefaultTTL)
 
   if err != nil {
     return nil, err
   }
 
-  if remainder == "" && (request.Qtype == "ANY" || request.Qtype == "SOA") {
+  if remainder == "" && (query.Type == "ANY" || query.Type == "SOA") {
     soaEntry, err := getSOAEntry(cr.Client, zone, cr.Hostname, cr.HostmasterEmailAddress, cr.DefaultTTL)
 
     if err != nil {
       return nil, err
     }
 
-    entries = append([]*entry{soaEntry}, entries...)
+    entries = append([]*ConsulEntry{soaEntry}, entries...)
   }
 
   log.Infof("got %d entries", len(entries))
 
-  responses = make([]*pdns.Response, len(entries))
-  for index, entry := range entries {
-    response := &pdns.Response{request.Qname, "IN", entry.entry_type, strconv.Itoa(int(entry.ttl)), "1", entry.payload}
-    responses[index] = response
-    log.Infof("Sending response: %v", response)
-  }
-
-  return responses, nil
+  return entries, nil
 }

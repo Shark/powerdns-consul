@@ -6,17 +6,32 @@ import (
   "fmt"
   "encoding/json"
   "io/ioutil"
+  "strconv"
   "github.com/hashicorp/consul/api"
   log "github.com/golang/glog"
   "github.com/Shark/powerdns-consul/consul"
   "github.com/Shark/powerdns-consul/pdns"
 )
 
-type config struct {
-  Hostname string
-  HostmasterEmailAddress string
-  ConsulAddress string
-  DefaultTTL uint32
+func resolveTransform(resolver *consul.Resolver) (func(*pdns.Request) ([]*pdns.Response, error)) {
+  return func(request *pdns.Request) (responses []*pdns.Response, err error) {
+    query := &consul.Query{request.Qname, request.Qtype}
+    entries, err := resolver.Resolve(query)
+
+    if err != nil {
+      return nil, err
+    }
+
+    responses = make([]*pdns.Response, len(entries))
+
+    for index, entry := range entries {
+      response := &pdns.Response{request.Qname, "IN", entry.Type, strconv.Itoa(int(entry.Ttl)), "1", entry.Payload}
+      responses[index] = response
+      log.Infof("Sending response: %v", response)
+    }
+
+    return responses, nil
+  }
 }
 
 func main() {
@@ -33,7 +48,7 @@ func main() {
     panic(fmt.Sprintf("Unable to read config file from %s: %v", *configFilePath, err))
   }
 
-  var curConfig config
+  var curConfig consul.ResolverConfig
   err = json.Unmarshal(configFileContents, &curConfig)
   if err != nil {
     panic(fmt.Sprintf("Unable to read config file from: %s: %v", *configFilePath, err))
@@ -51,6 +66,6 @@ func main() {
 
   resolver := &consul.Resolver{client, curConfig.Hostname, curConfig.HostmasterEmailAddress, curConfig.DefaultTTL}
 
-  handler := &pdns.Handler{resolver.Resolve}
+  handler := &pdns.Handler{resolveTransform(resolver)}
   handler.Handle(os.Stdin, os.Stdout)
 }
