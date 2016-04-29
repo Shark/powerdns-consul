@@ -5,10 +5,10 @@ import (
   "strings"
   "errors"
   "encoding/json"
-  "time"
-  "strconv"
   "github.com/hashicorp/consul/api"
   log "github.com/golang/glog"
+  "github.com/Shark/powerdns-consul/consul/iface"
+  "github.com/Shark/powerdns-consul/consul/soa"
 )
 
 type Resolver struct {
@@ -21,30 +21,6 @@ type ResolverConfig struct {
   HostmasterEmailAddress string
   ConsulAddress string
   DefaultTTL uint32
-}
-
-type Query struct {
-  Name string
-  Type string
-}
-
-type Entry struct {
-  Type string
-  Ttl uint32
-  Payload string
-}
-
-type soaEntry struct {
-  NameServer string
-  EmailAddr string
-  Sn uint32
-  Refresh int32
-  Retry int32
-  Expiry int32
-  Nx int32
-  InternalSnModifyIndex uint64
-  InternalSnDate int
-  InternalSnVersion uint32
 }
 
 type value struct {
@@ -117,34 +93,35 @@ func findZone(zones []string, name string) (zone string, remainder string, err e
   return zone, remainder, nil
 }
 
-func findZoneEntries(client *api.Client, zone string, remainder string, filter_entry_type string, defaultTTL uint32) (entries []*Entry, err error) {
-  var pairs []*api.KVPair
+func findKVPairsForZone(client *api.Client, zone string, remainder string) ([]*api.KVPair, error) {
+  var (
+    prefix string
+    numSegments int
+  )
 
   if remainder != "" {
-    prefix := fmt.Sprintf("zones/%s/%s", zone, remainder)
-    pairs, _, err = client.KV().List(prefix, nil)
-
-    if err != nil {
-      return nil, err
-    }
+    prefix = fmt.Sprintf("zones/%s/%s", zone, remainder)
+    numSegments = 4 // zones/example.invalid/remainder/A -> 4 segments
   } else {
-    prefix := fmt.Sprintf("zones/%s", zone)
-    unfilteredPairs, _, err := client.KV().List(prefix, nil)
-
-    if err != nil {
-      return nil, err
-    }
-
-    for _, pair := range unfilteredPairs {
-      key_tokens := strings.Split(pair.Key, "/")
-
-      if len(key_tokens) == 3 { // discard entries for subdomains
-        pairs = append(pairs, pair)
-      }
-    }
+    prefix = fmt.Sprintf("zones/%s", zone)
+    numSegments = 3 // zones/example.invalid/A -> 3 segments
   }
 
+  unfilteredPairs, _, err := client.KV().List(prefix, nil)
 
+  if err != nil {
+    return nil, err
+  }
+
+  return filterKVPairs(unfilteredPairs, numSegments), nil
+}
+
+func findZoneEntries(client *api.Client, zone string, remainder string, filter_entry_type string, defaultTTL uint32) (entries []*iface.Entry, err error) {
+  pairs, err := findKVPairsForZone(client, zone, remainder)
+
+  if err != nil {
+    return nil, err
+  }
 
   for _, pair := range pairs {
     entry_type_tokens := strings.Split(pair.Key, "/")
@@ -172,138 +149,13 @@ func findZoneEntries(client *api.Client, zone string, remainder string, filter_e
           continue
         }
 
-        entry := &Entry{entry_type, ttl, *value.Payload}
+        entry := &iface.Entry{entry_type, ttl, *value.Payload}
         entries = append(entries, entry)
       }
     }
   }
 
   return entries, nil
-}
-
-func getSOAEntry(client *api.Client, zone string, hostname string, hostmasterEmailAddress string, defaultTTL uint32) (entry *Entry, err error) {
-  prefix := fmt.Sprintf("zones/%s", zone)
-  _, meta, err := client.KV().List(prefix, nil)
-
-  if err != nil {
-    return nil, err
-  }
-
-  lastModifyIndex := meta.LastIndex
-
-  key := fmt.Sprintf("soa/%s", zone)
-  soaEntryPair, _, err := client.KV().Get(key, nil)
-
-  if err != nil {
-    return nil, err
-  }
-
-  var soa soaEntry
-
-  if soaEntryPair != nil {
-    // update the existing _SOA entry
-    err = json.Unmarshal(soaEntryPair.Value, &soa)
-
-    if err != nil {
-      return nil, err
-    }
-
-    if soa.InternalSnModifyIndex != lastModifyIndex {
-      // update the modify index
-      snDate := getCurrentDateFormatted()
-
-      if err != nil {
-        return nil, err
-      }
-
-      var newSnDate int
-      var newSnVersion uint32
-      var newSnModifyIndex = lastModifyIndex
-
-      if soa.InternalSnDate != snDate {
-        newSnDate = snDate
-        newSnVersion = 0
-      } else {
-        newSnDate = soa.InternalSnDate
-        // TODO: what about newSnVersion > 99?
-        newSnVersion = soa.InternalSnVersion + 1
-      }
-
-      soa.InternalSnDate = newSnDate
-      soa.InternalSnVersion = newSnVersion
-      soa.InternalSnModifyIndex = newSnModifyIndex
-
-      soa.Sn = formatSoaSn(soa.InternalSnDate, soa.InternalSnVersion)
-
-      json, err := json.Marshal(soa)
-
-      if err != nil {
-        return nil, err
-      }
-
-      _, err = client.KV().Put(&api.KVPair{Key: key, Value: json}, nil)
-      if err != nil {
-        return nil, err
-      }
-    } // else nothing to do
-  } else {
-    // generate a new _SOA entry
-    snDate := getCurrentDateFormatted()
-    var snVersion uint32 = 1
-
-    if err != nil {
-      return nil, err
-    }
-
-    sn := formatSoaSn(snDate, snVersion)
-    soa = soaEntry{hostname, hostmasterEmailAddress, sn, 1200, 180, 1209600, int32(defaultTTL), lastModifyIndex, snDate, snVersion}
-
-    json, err := json.Marshal(soa)
-
-    if err != nil {
-      return nil, err
-    }
-
-    _, err = client.KV().Put(&api.KVPair{Key: key, Value: json}, nil)
-    if err != nil {
-      return nil, err
-    }
-  }
-
-  soaAsEntry := formatSoaEntry(&soa, defaultTTL)
-  return soaAsEntry, nil
-}
-
-func formatSoaSn(snDate int, snVersion uint32) (sn uint32) {
-  soaSnString := fmt.Sprintf("%d%02d", snDate, snVersion)
-  soaSnInt, err := strconv.Atoi(soaSnString)
-
-  if err != nil {
-    panic("error generating SoaSn")
-  }
-
-  return uint32(soaSnInt)
-}
-
-func formatSoaEntry(sEntry *soaEntry, ttl uint32) (*Entry) {
-  value := fmt.Sprintf("%s %s %d %d %d %d %d", sEntry.NameServer, sEntry.EmailAddr, sEntry.Sn, sEntry.Refresh, sEntry.Retry, sEntry.Expiry, sEntry.Nx)
-
-  return &Entry{"SOA", ttl, value}
-}
-
-func getCurrentDateFormatted() (int) {
-  now := time.Now()
-  formattedMonthString := fmt.Sprintf("%02d", now.Month())
-  formattedDayString := fmt.Sprintf("%02d", now.Day())
-
-  dateString := fmt.Sprintf("%d%s%s", now.Year(), formattedMonthString, formattedDayString)
-  date, err := strconv.Atoi(dateString)
-
-  if err != nil {
-    return 0
-  }
-
-  return date
 }
 
 func NewResolver(config *ResolverConfig) (*Resolver) {
@@ -316,7 +168,7 @@ func NewResolver(config *ResolverConfig) (*Resolver) {
   return &Resolver{config, client}
 }
 
-func (cr *Resolver) Resolve(query *Query) (entries []*Entry, err error) {
+func (cr *Resolver) Resolve(query *iface.Query) (entries []*iface.Entry, err error) {
   log.Infof("Received query: %v", query)
 
   zones, err := allZones(cr.client)
@@ -333,7 +185,7 @@ func (cr *Resolver) Resolve(query *Query) (entries []*Entry, err error) {
   }
 
   if zone == "" {
-    return make([]*Entry, 0), nil
+    return make([]*iface.Entry, 0), nil
   }
 
   entries, err = findZoneEntries(cr.client, zone, remainder, query.Type, cr.Config.DefaultTTL)
@@ -343,13 +195,13 @@ func (cr *Resolver) Resolve(query *Query) (entries []*Entry, err error) {
   }
 
   if remainder == "" && (query.Type == "ANY" || query.Type == "SOA") {
-    soaEntry, err := getSOAEntry(cr.client, zone, cr.Config.Hostname, cr.Config.HostmasterEmailAddress, cr.Config.DefaultTTL)
+    entry, err := soa.RetrieveOrCreateSOAEntry(cr.client, zone, cr.Config.Hostname, cr.Config.HostmasterEmailAddress, cr.Config.DefaultTTL)
 
     if err != nil {
       return nil, err
     }
 
-    entries = append([]*Entry{soaEntry}, entries...)
+    entries = append([]*iface.Entry{entry}, entries...)
   }
 
   log.Infof("got %d entries", len(entries))

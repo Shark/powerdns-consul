@@ -9,12 +9,13 @@ import (
   "strconv"
   log "github.com/golang/glog"
   "github.com/Shark/powerdns-consul/consul"
+  consulIface "github.com/Shark/powerdns-consul/consul/iface"
   "github.com/Shark/powerdns-consul/pdns"
 )
 
 func resolveTransform(resolver *consul.Resolver) (func(*pdns.Request) ([]*pdns.Response, error)) {
   return func(request *pdns.Request) (responses []*pdns.Response, err error) {
-    query := &consul.Query{request.Qname, request.Qtype}
+    query := &consulIface.Query{request.Qname, request.Qtype}
     entries, err := resolver.Resolve(query)
 
     if err != nil {
