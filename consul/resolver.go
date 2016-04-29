@@ -3,7 +3,6 @@ package consul
 import (
   "fmt"
   "strings"
-  "errors"
   "encoding/json"
   "github.com/hashicorp/consul/api"
   log "github.com/golang/glog"
@@ -13,7 +12,7 @@ import (
 
 type Resolver struct {
   Config *ResolverConfig
-  client *api.Client
+  kv iface.KVStore
 }
 
 type ResolverConfig struct {
@@ -28,34 +27,32 @@ type value struct {
   Payload *string
 }
 
-func allZones(client *api.Client) (zones []string, err error) {
-  keys, _, err := client.KV().Keys("zones/", "/", nil)
+func allZones(kv iface.KVStore) (zones []string, err error) {
+  keys, _, err := kv.Keys("zones/", "/", nil)
 
   if err != nil {
     return nil, err
   }
 
-  zones = make([]string, len(keys))
-
-  for index, key := range keys {
+  for _, key := range keys {
     tokens := strings.Split(key, "/")
 
     if len(tokens) != 3 {
-      panic("expected to get three tokens")
+      continue
     }
 
-    zones[index] = tokens[1]
+    zones = append(zones, tokens[1])
   }
 
   return zones, nil
 }
 
-func findZone(zones []string, name string) (zone string, remainder string, err error) {
+func findZone(zones []string, name string) (zone string, remainder string) {
   // name is expected to conform to a format like "name.example.com."
   tokens := strings.Split(name, ".")
 
   if len(tokens) < 2 {
-    return "", "", errors.New("zone must have two or more items")
+    return "", ""
   }
 
   if(tokens[len(tokens)-1] == "") {
@@ -82,7 +79,13 @@ func findZone(zones []string, name string) (zone string, remainder string, err e
         length_of_remainder := len(tokens) - length_of_zone
         if length_of_remainder > 0 {
           remainder_slice := tokens[0:length_of_remainder]
-          remainder = strings.Join(remainder_slice, ".")
+          var nonEmptyRemainderTokens []string
+          for _, remainderToken := range remainder_slice {
+            if remainderToken != "" {
+              nonEmptyRemainderTokens = append(nonEmptyRemainderTokens, remainderToken)
+            }
+          }
+          remainder = strings.Join(nonEmptyRemainderTokens, ".")
         } else {
           remainder = ""
         }
@@ -90,10 +93,10 @@ func findZone(zones []string, name string) (zone string, remainder string, err e
     }
   }
 
-  return zone, remainder, nil
+  return zone, remainder
 }
 
-func findKVPairsForZone(client *api.Client, zone string, remainder string) ([]*api.KVPair, error) {
+func findKVPairsForZone(kv iface.KVStore, zone string, remainder string) ([]*api.KVPair, error) {
   var (
     prefix string
     numSegments int
@@ -107,7 +110,7 @@ func findKVPairsForZone(client *api.Client, zone string, remainder string) ([]*a
     numSegments = 3 // zones/example.invalid/A -> 3 segments
   }
 
-  unfilteredPairs, _, err := client.KV().List(prefix, nil)
+  unfilteredPairs, _, err := kv.List(prefix, nil)
 
   if err != nil {
     return nil, err
@@ -116,8 +119,8 @@ func findKVPairsForZone(client *api.Client, zone string, remainder string) ([]*a
   return filterKVPairs(unfilteredPairs, numSegments), nil
 }
 
-func findZoneEntries(client *api.Client, zone string, remainder string, filter_entry_type string, defaultTTL uint32) (entries []*iface.Entry, err error) {
-  pairs, err := findKVPairsForZone(client, zone, remainder)
+func findZoneEntries(kv iface.KVStore, zone string, remainder string, filter_entry_type string, defaultTTL uint32) (entries []*iface.Entry, err error) {
+  pairs, err := findKVPairsForZone(kv, zone, remainder)
 
   if err != nil {
     return nil, err
@@ -165,19 +168,19 @@ func NewResolver(config *ResolverConfig) (*Resolver) {
     panic(fmt.Sprintf("Unable to instantiate Consul client: %v", err))
   }
 
-  return &Resolver{config, client}
+  return &Resolver{config, client.KV()}
 }
 
 func (cr *Resolver) Resolve(query *iface.Query) (entries []*iface.Entry, err error) {
   log.Infof("Received query: %v", query)
 
-  zones, err := allZones(cr.client)
+  zones, err := allZones(cr.kv)
 
   if err != nil {
     return nil, err
   }
 
-  zone, remainder, err := findZone(zones, query.Name)
+  zone, remainder := findZone(zones, query.Name)
   log.Infof("zone: %s, remainder: %s", zone, remainder)
 
   if err != nil {
@@ -188,14 +191,14 @@ func (cr *Resolver) Resolve(query *iface.Query) (entries []*iface.Entry, err err
     return make([]*iface.Entry, 0), nil
   }
 
-  entries, err = findZoneEntries(cr.client, zone, remainder, query.Type, cr.Config.DefaultTTL)
+  entries, err = findZoneEntries(cr.kv, zone, remainder, query.Type, cr.Config.DefaultTTL)
 
   if err != nil {
     return nil, err
   }
 
   if remainder == "" && (query.Type == "ANY" || query.Type == "SOA") {
-    entry, err := soa.RetrieveOrCreateSOAEntry(cr.client, zone, cr.Config.Hostname, cr.Config.HostmasterEmailAddress, cr.Config.DefaultTTL)
+    entry, err := soa.RetrieveOrCreateSOAEntry(cr.kv, zone, cr.Config.Hostname, cr.Config.HostmasterEmailAddress, cr.Config.DefaultTTL)
 
     if err != nil {
       return nil, err

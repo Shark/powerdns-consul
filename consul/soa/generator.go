@@ -22,9 +22,9 @@ type soaEntry struct {
   InternalSnVersion uint32
 }
 
-func RetrieveOrCreateSOAEntry(client *api.Client, zone string, hostname string, hostmasterEmailAddress string, defaultTTL uint32) (entry *iface.Entry, err error) {
+func RetrieveOrCreateSOAEntry(kv iface.KVStore, zone string, hostname string, hostmasterEmailAddress string, defaultTTL uint32) (entry *iface.Entry, err error) {
   prefix := fmt.Sprintf("zones/%s", zone)
-  _, meta, err := client.KV().List(prefix, nil)
+  _, meta, err := kv.List(prefix, nil)
 
   if err != nil {
     return nil, err
@@ -33,7 +33,7 @@ func RetrieveOrCreateSOAEntry(client *api.Client, zone string, hostname string, 
   lastModifyIndex := meta.LastIndex
 
   key := fmt.Sprintf("soa/%s", zone)
-  soaEntryPair, _, err := client.KV().Get(key, nil)
+  soaEntryPair, _, err := kv.Get(key, nil)
 
   if err != nil {
     return nil, err
@@ -82,7 +82,7 @@ func RetrieveOrCreateSOAEntry(client *api.Client, zone string, hostname string, 
         return nil, err
       }
 
-      _, err = client.KV().Put(&api.KVPair{Key: key, Value: json}, nil)
+      _, err = kv.Put(&api.KVPair{Key: key, Value: json}, nil)
       if err != nil {
         return nil, err
       }
@@ -105,7 +105,7 @@ func RetrieveOrCreateSOAEntry(client *api.Client, zone string, hostname string, 
       return nil, err
     }
 
-    _, err = client.KV().Put(&api.KVPair{Key: key, Value: json}, nil)
+    _, err = kv.Put(&api.KVPair{Key: key, Value: json}, nil)
     if err != nil {
       return nil, err
     }
