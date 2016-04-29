@@ -10,17 +10,17 @@ import (
 )
 
 var (
-	GREETING_ABI_V2 = []byte("HELO\t2")
-	GREETING_REPLY  = "OK\tpowerdns-consul\n"
-	END_REPLY       = "END\n"
-	FAIL_REPLY      = "FAIL\n"
+  GREETING_ABI_V2 = []byte("HELO\t2")
+  GREETING_REPLY  = "OK\tpowerdns-consul\n"
+  END_REPLY       = "END\n"
+  FAIL_REPLY      = "FAIL\n"
   PONG_REPLY      = "PONG\n"
 )
 
 const (
-	KIND_AXFR = "AXFR"
-	KIND_Q    = "Q"
-	KIND_PING = "PING"
+  KIND_AXFR = "AXFR"
+  KIND_Q    = "Q"
+  KIND_PING = "PING"
 )
 
 type Request struct {
@@ -43,12 +43,12 @@ type Response struct {
 }
 
 var (
-	errLongLine = errors.New("pdns line too long")
-	errBadLine  = errors.New("pdns line unparseable")
+  errLongLine = errors.New("pdns line too long")
+  errBadLine  = errors.New("pdns line unparseable")
 )
 
 type Handler struct {
-  LookupCallback func(request *Request) (responses []*Response, err error)
+  Lookup func(request *Request) (responses []*Response, err error)
 }
 
 func (h *Handler) parseRequest(line []byte) (request *Request, err error) {
@@ -115,7 +115,7 @@ func (h *Handler) Handle(in io.Reader, out io.Writer) {
 
     switch request.Kind {
     case KIND_Q:
-      responses, err := h.LookupCallback(request)
+      responses, err := h.Lookup(request)
       if err != nil {
         log.Errorf("Query for %v failed: %v", request.Qname, err)
         h.write(out, FAIL_REPLY)
