@@ -1,4 +1,4 @@
-package main
+package pdns
 
 import (
   "io"
@@ -23,23 +23,23 @@ const (
 	KIND_PING = "PING"
 )
 
-type PdnsRequest struct {
-  kind     string
-  qname    string
-  qclass   string
-  qtype    string
-  id       string
-  remoteIp string
-  localIp  string
+type Request struct {
+  Kind     string
+  Qname    string
+  Qclass   string
+  Qtype    string
+  Id       string
+  RemoteIp string
+  LocalIp  string
 }
 
-type PdnsResponse struct {
-  qname   string
-  qclass  string
-  qtype   string
-  ttl     string
-  id      string
-  content string
+type Response struct {
+  Qname   string
+  Qclass  string
+  Qtype   string
+  Ttl     string
+  Id      string
+  Content string
 }
 
 var (
@@ -47,11 +47,11 @@ var (
 	errBadLine  = errors.New("pdns line unparseable")
 )
 
-type PowerDNSHandler struct {
-  lookupCallback func(request *PdnsRequest) (responses []*PdnsResponse, err error)
+type Handler struct {
+  LookupCallback func(request *Request) (responses []*Response, err error)
 }
 
-func (h *PowerDNSHandler) parseRequest(line []byte) (request *PdnsRequest, err error) {
+func (h *Handler) parseRequest(line []byte) (request *Request, err error) {
   tokens := bytes.Split(line, []byte("\t"))
   kind := string(tokens[0])
 
@@ -60,24 +60,24 @@ func (h *PowerDNSHandler) parseRequest(line []byte) (request *PdnsRequest, err e
     if len(tokens) < 7 {
       return nil, errBadLine
     }
-    return &PdnsRequest{kind, string(tokens[1]), string(tokens[2]), string(tokens[3]), string(tokens[4]), string(tokens[5]), string(tokens[6])}, nil
+    return &Request{kind, string(tokens[1]), string(tokens[2]), string(tokens[3]), string(tokens[4]), string(tokens[5]), string(tokens[6])}, nil
   case KIND_PING, KIND_AXFR:
-    return &PdnsRequest{kind: kind}, nil
+    return &Request{Kind: kind}, nil
   default:
     return nil, errBadLine
   }
 }
 
-func (h *PowerDNSHandler) formatResponse(resp *PdnsResponse) (lines string) {
-  return fmt.Sprintf("DATA\t%v\t%v\t%v\t%v\t%v\t%v\n", resp.qname, resp.qclass, resp.qtype, resp.ttl, resp.id, resp.content)
+func (h *Handler) formatResponse(resp *Response) (lines string) {
+  return fmt.Sprintf("DATA\t%v\t%v\t%v\t%v\t%v\t%v\n", resp.Qname, resp.Qclass, resp.Qtype, resp.Ttl, resp.Id, resp.Content)
 }
 
-func (h *PowerDNSHandler) write(out io.Writer, line string) (err error) {
+func (h *Handler) write(out io.Writer, line string) (err error) {
   _, err = io.WriteString(out, line)
   return err
 }
 
-func (h *PowerDNSHandler) Handle(in io.Reader, out io.Writer) {
+func (h *Handler) Handle(in io.Reader, out io.Writer) {
   log.Infof("Started Handler")
   bufReader := bufio.NewReader(in)
   handshakeReceived := false
@@ -113,11 +113,11 @@ func (h *PowerDNSHandler) Handle(in io.Reader, out io.Writer) {
       continue
     }
 
-    switch request.kind {
+    switch request.Kind {
     case KIND_Q:
-      responses, err := h.lookupCallback(request)
+      responses, err := h.LookupCallback(request)
       if err != nil {
-        log.Errorf("Query for %v failed: %v", request.qname, err)
+        log.Errorf("Query for %v failed: %v", request.Qname, err)
         h.write(out, FAIL_REPLY)
         continue
       }

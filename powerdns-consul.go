@@ -8,6 +8,8 @@ import (
   "io/ioutil"
   "github.com/hashicorp/consul/api"
   log "github.com/golang/glog"
+  "github.com/Shark/powerdns-consul/consul"
+  "github.com/Shark/powerdns-consul/pdns"
 )
 
 type config struct {
@@ -47,8 +49,8 @@ func main() {
     panic(fmt.Sprintf("Unable to instantiate consul client: %v", err))
   }
 
-  resolver := &ConsulResolver{client, curConfig.Hostname, curConfig.HostmasterEmailAddress, curConfig.DefaultTTL}
+  resolver := &consul.Resolver{client, curConfig.Hostname, curConfig.HostmasterEmailAddress, curConfig.DefaultTTL}
 
-  handler := &PowerDNSHandler{resolver.Resolve}
+  handler := &pdns.Handler{resolver.Resolve}
   handler.Handle(os.Stdin, os.Stdout)
 }

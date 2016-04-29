@@ -1,4 +1,4 @@
-package main
+package consul
 
 import (
   "fmt"
@@ -9,13 +9,14 @@ import (
   "strconv"
   "github.com/hashicorp/consul/api"
   log "github.com/golang/glog"
+  "github.com/Shark/powerdns-consul/pdns"
 )
 
-type ConsulResolver struct {
-  client  *api.Client
-  hostname string
-  hostmasterEmailAddress string
-  defaultTTL uint32
+type Resolver struct {
+  Client  *api.Client
+  Hostname string
+  HostmasterEmailAddress string
+  DefaultTTL uint32
 }
 
 type entry struct {
@@ -296,16 +297,16 @@ func getCurrentDateFormatted() (int) {
   return date
 }
 
-func (cr *ConsulResolver) Resolve(request *PdnsRequest) (responses []*PdnsResponse, err error) {
+func (cr *Resolver) Resolve(request *pdns.Request) (responses []*pdns.Response, err error) {
   log.Infof("Received request: %v", request)
 
-  zones, err := allZones(cr.client)
+  zones, err := allZones(cr.Client)
 
   if err != nil {
     return nil, err
   }
 
-  zone, remainder, err := findZone(zones, request.qname)
+  zone, remainder, err := findZone(zones, request.Qname)
   log.Infof("zone: %s, remainder: %s", zone, remainder)
 
   if err != nil {
@@ -313,17 +314,17 @@ func (cr *ConsulResolver) Resolve(request *PdnsRequest) (responses []*PdnsRespon
   }
 
   if zone == "" {
-    return make([]*PdnsResponse, 0), nil
+    return make([]*pdns.Response, 0), nil
   }
 
-  entries, err := findZoneEntries(cr.client, zone, remainder, request.qtype, cr.defaultTTL)
+  entries, err := findZoneEntries(cr.Client, zone, remainder, request.Qtype, cr.DefaultTTL)
 
   if err != nil {
     return nil, err
   }
 
-  if remainder == "" && (request.qtype == "ANY" || request.qtype == "SOA") {
-    soaEntry, err := getSOAEntry(cr.client, zone, cr.hostname, cr.hostmasterEmailAddress, cr.defaultTTL)
+  if remainder == "" && (request.Qtype == "ANY" || request.Qtype == "SOA") {
+    soaEntry, err := getSOAEntry(cr.Client, zone, cr.Hostname, cr.HostmasterEmailAddress, cr.DefaultTTL)
 
     if err != nil {
       return nil, err
@@ -334,9 +335,9 @@ func (cr *ConsulResolver) Resolve(request *PdnsRequest) (responses []*PdnsRespon
 
   log.Infof("got %d entries", len(entries))
 
-  responses = make([]*PdnsResponse, len(entries))
+  responses = make([]*pdns.Response, len(entries))
   for index, entry := range entries {
-    response := &PdnsResponse{request.qname, "IN", entry.entry_type, strconv.Itoa(int(entry.ttl)), "1", entry.payload}
+    response := &pdns.Response{request.Qname, "IN", entry.entry_type, strconv.Itoa(int(entry.ttl)), "1", entry.payload}
     responses[index] = response
     log.Infof("Sending response: %v", response)
   }
