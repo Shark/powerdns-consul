@@ -3,7 +3,6 @@ package pdns
 import (
   "io"
   "fmt"
-  "bufio"
   "bytes"
   "errors"
   log "github.com/golang/glog"
@@ -77,30 +76,20 @@ func (h *Handler) write(out io.Writer, line string) (err error) {
   return err
 }
 
-func (h *Handler) Handle(in io.Reader, out io.Writer) {
+func (h *Handler) Handle(in chan []byte, out chan []byte) {
   log.Infof("Started Handler")
-  bufReader := bufio.NewReader(in)
   handshakeReceived := false
 
   for {
-    line, isPrefix, err := bufReader.ReadLine()
-
-    if isPrefix {
-      log.Errorf("Got a prefixed line, returning")
-      return
-    }
-
-    if err != nil {
-      log.Errorf("Error reading line: %v", err)
-    }
+    line := <-in
 
     if !handshakeReceived {
       if !bytes.Equal(line, GREETING_ABI_V2) {
         log.Errorf("Handshake failed: %s != %s", line, GREETING_ABI_V2)
-        h.write(out, FAIL_REPLY)
+        out <- []byte(FAIL_REPLY)
       } else {
         handshakeReceived = true
-        h.write(out, GREETING_REPLY)
+        out <- []byte(GREETING_REPLY)
       }
 
       continue
@@ -109,7 +98,7 @@ func (h *Handler) Handle(in io.Reader, out io.Writer) {
     request, err := h.parseRequest(line)
     if err != nil {
       log.Errorf("Failed parsing request: %v", err)
-      h.write(out, FAIL_REPLY)
+      out <- []byte(FAIL_REPLY)
       continue
     }
 
@@ -118,19 +107,19 @@ func (h *Handler) Handle(in io.Reader, out io.Writer) {
       responses, err := h.Lookup(request)
       if err != nil {
         log.Errorf("Query for %v failed: %v", request.Qname, err)
-        h.write(out, FAIL_REPLY)
+        out <- []byte(FAIL_REPLY)
         continue
       }
 
       for _, response := range responses {
-        h.write(out, h.formatResponse(response))
+        out <- []byte(h.formatResponse(response))
       }
     case KIND_AXFR:
       // not implemented
     case KIND_PING:
-      h.write(out, PONG_REPLY)
+      out <- []byte(PONG_REPLY)
     }
 
-    h.write(out, END_REPLY)
+    out <- []byte(END_REPLY)
   }
 }

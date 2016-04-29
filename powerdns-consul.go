@@ -1,9 +1,13 @@
 package main
 
 import (
+  "bufio"
   "os"
+  "io"
+  "sync"
   "flag"
   "fmt"
+  "os/signal"
   "encoding/json"
   "io/ioutil"
   "strconv"
@@ -61,5 +65,49 @@ func main() {
   resolver := consul.NewResolver(&curConfig)
 
   handler := &pdns.Handler{resolveTransform(resolver)}
-  handler.Handle(os.Stdin, os.Stdout)
+
+  in, out := make(chan []byte), make(chan []byte)
+
+  go func() {
+    handler.Handle(in, out)
+  }()
+
+  go func() {
+    bufReader := bufio.NewReader(os.Stdin)
+
+    for {
+      line, isPrefix, err := bufReader.ReadLine()
+
+      if isPrefix {
+        log.Errorf("Got a prefixed line, returning")
+        continue
+      }
+
+      if err != nil {
+        log.Errorf("Error reading line: %v", err)
+        continue
+      }
+
+      in <- line
+    }
+  }()
+
+  go func() {
+    for {
+      line := <- out
+      io.WriteString(os.Stdout, string(line))
+    }
+  }()
+
+  var wg sync.WaitGroup
+  wg.Add(1)
+  signalChan := make(chan os.Signal, 1)
+  signal.Notify(signalChan, os.Interrupt)
+  go func() {
+    for signal := range signalChan {
+      log.Infof("Received signal: %v, exiting", signal)
+      wg.Done()
+    }
+  }()
+  wg.Wait()
 }
