@@ -1,0 +1,42 @@
+#/usr/bin/env bash
+set -euo pipefail
+
+consul_kv_set() {
+  declare key="$1"
+  declare value="$2"
+  curl -s -f -X PUT -d "$value" "http://127.0.0.1:8500/v1/kv/$key"
+}
+
+dns_test() {
+  declare query="$1"
+  declare expected="$2"
+  local actual="$(dig @127.0.0.1 $query +short | sort)"
+
+  if [[ $actual != $expected ]]; then
+    >&2 echo "Query for $query failed: actual $actual, expected $expected"
+    exit 2
+  fi
+}
+
+main() {
+  /usr/local/bin/consul agent -config-dir=/etc/consul &
+  /usr/sbin/pdns_server &
+
+  # let Consul and PowerDNS initialize themselves
+  sleep 3
+
+  consul_kv_set "zones/example.com/A" '[{"Payload": "127.0.0.1"}]'
+  consul_kv_set "zones/example.com/MX" '[{"Payload": "10\tmx1.example.com"},{"Payload": "20\tmx2.example.com"}]'
+  consul_kv_set "zones/example.com/mx1/A" '[{"Payload": "127.0.0.2"}]'
+  consul_kv_set "zones/example.com/mx2/A" '[{"Payload": "127.0.0.3"}]'
+
+  dns_test "example.com A" "127.0.0.1"
+  dns_test "example.com MX" "10 mx1.example.com.
+20 mx2.example.com."
+  dns_test "mx1.example.com A" "127.0.0.2"
+  dns_test "mx2.example.com A" "127.0.0.3"
+
+  echo "Test succeeded"
+}
+
+main "$@"

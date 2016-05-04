@@ -13,12 +13,16 @@ Some of the PowerDNS-related code is inspired by [mindreframer's work](https://g
 ## Building
 
 - Clone the repository in your `$GOPATH/src/github.com/Shark/powerdns-consul`
-- Run `go get .`
+- Run `go get ./...`
 - Run `make`
 
-## Running the tests
+## Testing
 
-Run `make test`
+- Go tests: run `make test`
+- End to end test
+  - Run `make end2end_test`.
+  - Requires a working [Docker](https://www.docker.com) setup.
+  - This test will build powerdns-consul and a Docker image with PowerDNS, Consul and powerdns-consul. It will then bootstrap the Consul key-value store and run some 'real world' tests against this setup using `dig`.
 
 ## Usage
 

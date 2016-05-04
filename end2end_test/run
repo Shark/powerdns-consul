@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+cd "$DIR/.."
+GOOS=linux GOARCH=amd64 make
+cp powerdns-consul "$DIR/"
+cd "$DIR"
+./build
+docker run -i --rm sh4rk/powerdns-consul-end2end

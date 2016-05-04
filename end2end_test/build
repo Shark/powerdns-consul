@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+docker build --force-rm -t sh4rk/powerdns-consul-end2end .

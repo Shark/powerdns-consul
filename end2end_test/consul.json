@@ -1,0 +1,5 @@
+{
+  "data_dir": "/var/local/lib/consul",
+  "server": true,
+  "bootstrap_expect": 1
+}
