@@ -39,7 +39,7 @@ func resolveTransform(resolver *consul.Resolver) (func(*pdns.Request) ([]*pdns.R
 }
 
 func main() {
-  configFilePath := flag.String("config", "/etc/powerdns-consul.json", "path to the config file")
+  configFilePath := flag.String("config", "/etc/powerdns-consul/config.json", "path to the config file")
   flag.Parse()
   flag.Lookup("logtostderr").Value.Set("true")
 
