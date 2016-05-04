@@ -22,7 +22,15 @@ type soaEntry struct {
   InternalSnVersion uint32
 }
 
-func RetrieveOrCreateSOAEntry(kv iface.KVStore, zone string, hostname string, hostmasterEmailAddress string, defaultTTL uint32) (entry *iface.Entry, err error) {
+type Generator struct {
+  currentTime time.Time
+}
+
+func NewGenerator(currentTime time.Time) (*Generator) {
+  return &Generator{currentTime}
+}
+
+func (g *Generator) RetrieveOrCreateSOAEntry(kv iface.KVStore, zone string, hostname string, hostmasterEmailAddress string, defaultTTL uint32) (entry *iface.Entry, err error) {
   prefix := fmt.Sprintf("zones/%s", zone)
   _, meta, err := kv.List(prefix, nil)
 
@@ -51,7 +59,7 @@ func RetrieveOrCreateSOAEntry(kv iface.KVStore, zone string, hostname string, ho
 
     if soa.InternalSnModifyIndex != lastModifyIndex {
       // update the modify index
-      snDate := getCurrentDateFormatted()
+      snDate := getDateFormatted(g.currentTime)
 
       if err != nil {
         return nil, err
@@ -89,7 +97,7 @@ func RetrieveOrCreateSOAEntry(kv iface.KVStore, zone string, hostname string, ho
     } // else nothing to do
   } else {
     // generate a new _SOA entry
-    snDate := getCurrentDateFormatted()
+    snDate := getDateFormatted(g.currentTime)
     var snVersion uint32 = 1
 
     if err != nil {
@@ -132,12 +140,11 @@ func formatSoaEntry(sEntry *soaEntry, ttl uint32) (*iface.Entry) {
   return &iface.Entry{"SOA", ttl, value}
 }
 
-func getCurrentDateFormatted() (int) {
-  now := time.Now()
-  formattedMonthString := fmt.Sprintf("%02d", now.Month())
-  formattedDayString := fmt.Sprintf("%02d", now.Day())
+func getDateFormatted(time time.Time) (int) {
+  formattedMonthString := fmt.Sprintf("%02d", time.Month())
+  formattedDayString := fmt.Sprintf("%02d", time.Day())
 
-  dateString := fmt.Sprintf("%d%s%s", now.Year(), formattedMonthString, formattedDayString)
+  dateString := fmt.Sprintf("%d%s%s", time.Year(), formattedMonthString, formattedDayString)
   date, err := strconv.Atoi(dateString)
 
   if err != nil {

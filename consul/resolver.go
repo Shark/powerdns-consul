@@ -3,6 +3,7 @@ package consul
 import (
   "fmt"
   "strings"
+  "time"
   "encoding/json"
   "github.com/hashicorp/consul/api"
   log "github.com/golang/glog"
@@ -198,7 +199,8 @@ func (cr *Resolver) Resolve(query *iface.Query) (entries []*iface.Entry, err err
   }
 
   if remainder == "" && (query.Type == "ANY" || query.Type == "SOA") {
-    entry, err := soa.RetrieveOrCreateSOAEntry(cr.kv, zone, cr.Config.Hostname, cr.Config.HostmasterEmailAddress, cr.Config.DefaultTTL)
+    generator := soa.NewGenerator(time.Now())
+    entry, err := generator.RetrieveOrCreateSOAEntry(cr.kv, zone, cr.Config.Hostname, cr.Config.HostmasterEmailAddress, cr.Config.DefaultTTL)
 
     if err != nil {
       return nil, err
