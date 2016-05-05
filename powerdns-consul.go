@@ -11,6 +11,7 @@ import (
   "encoding/json"
   "io/ioutil"
   "strconv"
+  "syscall"
   "github.com/Shark/powerdns-consul/consul"
   consulIface "github.com/Shark/powerdns-consul/consul/iface"
   "github.com/Shark/powerdns-consul/pdns"
@@ -66,10 +67,10 @@ func main() {
 
   handler := &pdns.Handler{resolveTransform(resolver)}
 
-  in, out := make(chan []byte), make(chan []byte)
+  inChan, outChan, quitChan := make(chan []byte), make(chan []byte), make(chan bool)
 
   go func() {
-    handler.Handle(in, out)
+    handler.Handle(inChan, outChan)
   }()
 
   go func() {
@@ -84,17 +85,23 @@ func main() {
       }
 
       if err != nil {
-        log.Printf("Error reading line: %v", err)
-        continue
+        if err == io.EOF {
+          log.Printf("Received EOF on input, exiting")
+          quitChan <- true
+          break
+        } else {
+          log.Printf("Error reading line: %v", err)
+          continue
+        }
       }
 
-      in <- line
+      inChan <- line
     }
   }()
 
   go func() {
     for {
-      line := <- out
+      line := <- outChan
       io.WriteString(os.Stdout, string(line))
     }
   }()
@@ -102,12 +109,31 @@ func main() {
   var wg sync.WaitGroup
   wg.Add(1)
   signalChan := make(chan os.Signal, 1)
-  signal.Notify(signalChan, os.Interrupt)
+  signal.Notify(signalChan)
   go func() {
-    for signal := range signalChan {
-      log.Printf("Received signal: %v, exiting", signal)
-      wg.Done()
+    for {
+      exit := false
+
+      select {
+      case signal := <- signalChan:
+        if signal == syscall.SIGINT || signal == syscall.SIGTERM {
+          log.Printf("Received signal: %v, exiting", signal)
+          exit = true
+        }
+      case quit := <- quitChan:
+        if quit {
+          log.Printf("Exit requested by application, exiting")
+          exit = true
+        }
+      }
+
+      if exit {
+        break
+      }
     }
+
+    wg.Done()
   }()
+
   wg.Wait()
 }
