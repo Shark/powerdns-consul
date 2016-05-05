@@ -4,7 +4,7 @@ set -euo pipefail
 consul_kv_set() {
   declare key="$1"
   declare value="$2"
-  curl -s -f -X PUT -d "$value" "http://127.0.0.1:8500/v1/kv/$key"
+  curl -s -f -X PUT -d "$value" "http://127.0.0.1:8500/v1/kv/$key" > /dev/null
 }
 
 dns_test() {
@@ -36,7 +36,17 @@ main() {
   dns_test "mx1.example.com A" "127.0.0.2"
   dns_test "mx2.example.com A" "127.0.0.3"
 
-  echo "Test succeeded"
+  local soa_result="$(dig @127.0.0.1 example.com SOA +short)"
+  if [[ $(expr length "$soa_result") -lt 10 ]]; then
+    >&2 echo "SOA test failed, expected minimum 10 characters, got '$soa_result'"
+    exit 2
+  else
+    echo "Got SOA record: $soa_result"
+  fi
+
+  dns_test "example.com A" "127.0.0.1"
+
+  echo "Test successful"
 }
 
 main "$@"
