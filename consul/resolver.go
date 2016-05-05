@@ -2,11 +2,11 @@ package consul
 
 import (
   "fmt"
+  "log"
   "strings"
   "time"
   "encoding/json"
   "github.com/hashicorp/consul/api"
-  log "github.com/golang/glog"
   "github.com/Shark/powerdns-consul/consul/iface"
   "github.com/Shark/powerdns-consul/consul/soa"
 )
@@ -140,7 +140,7 @@ func findZoneEntries(kv iface.KVStore, zone string, remainder string, filter_ent
       err = json.Unmarshal(pair.Value, &values_in_entry)
 
       if err != nil {
-        log.Errorf("Discarding key %s: %v", pair.Key, err)
+        log.Printf("Discarding key %s: %v", pair.Key, err)
         continue
       }
 
@@ -153,7 +153,7 @@ func findZoneEntries(kv iface.KVStore, zone string, remainder string, filter_ent
         }
 
         if value.Payload == nil {
-          log.Errorf("Discarding entry in key %s because payload is missing", pair.Key)
+          log.Printf("Discarding entry in key %s because payload is missing", pair.Key)
           continue
         }
 
@@ -170,15 +170,13 @@ func NewResolver(config *ResolverConfig) (*Resolver) {
   client, err := api.NewClient(&api.Config{Address: config.ConsulAddress})
 
   if err != nil {
-    panic(fmt.Sprintf("Unable to instantiate Consul client: %v", err))
+    log.Panicf("Unable to instantiate Consul client: %v", err)
   }
 
   return &Resolver{config, client.KV()}
 }
 
 func (cr *Resolver) Resolve(query *iface.Query) (entries []*iface.Entry, err error) {
-  log.Infof("Received query: %v", query)
-
   zones, err := allZones(cr.kv)
 
   if err != nil {
@@ -186,7 +184,6 @@ func (cr *Resolver) Resolve(query *iface.Query) (entries []*iface.Entry, err err
   }
 
   zone, remainder := findZone(zones, query.Name)
-  log.Infof("zone: %s, remainder: %s", zone, remainder)
 
   if err != nil {
     return nil, err
@@ -218,8 +215,6 @@ func (cr *Resolver) Resolve(query *iface.Query) (entries []*iface.Entry, err err
 
     entries = append([]*iface.Entry{entry}, entries...)
   }
-
-  log.Infof("got %d entries", len(entries))
 
   return entries, nil
 }

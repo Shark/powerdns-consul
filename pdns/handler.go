@@ -1,11 +1,11 @@
 package pdns
 
 import (
-  "io"
-  "fmt"
   "bytes"
   "errors"
-  log "github.com/golang/glog"
+  "fmt"
+  "io"
+  "log"
 )
 
 var (
@@ -77,7 +77,6 @@ func (h *Handler) write(out io.Writer, line string) (err error) {
 }
 
 func (h *Handler) Handle(in chan []byte, out chan []byte) {
-  log.Infof("Started Handler")
   handshakeReceived := false
 
   for {
@@ -85,7 +84,7 @@ func (h *Handler) Handle(in chan []byte, out chan []byte) {
 
     if !handshakeReceived {
       if !bytes.Equal(line, GREETING_ABI_V2) {
-        log.Errorf("Handshake failed: %s != %s", line, GREETING_ABI_V2)
+        log.Printf("Handshake failed: %s != %s", line, GREETING_ABI_V2)
         out <- []byte(FAIL_REPLY)
       } else {
         handshakeReceived = true
@@ -97,7 +96,7 @@ func (h *Handler) Handle(in chan []byte, out chan []byte) {
 
     request, err := h.parseRequest(line)
     if err != nil {
-      log.Errorf("Failed parsing request: %v", err)
+      log.Printf("Failed parsing request: %v", err)
       out <- []byte(FAIL_REPLY)
       continue
     }
@@ -106,7 +105,7 @@ func (h *Handler) Handle(in chan []byte, out chan []byte) {
     case KIND_Q:
       responses, err := h.Lookup(request)
       if err != nil {
-        log.Errorf("Query for %v failed: %v", request.Qname, err)
+        log.Printf("Query for %v failed: %v", request.Qname, err)
         out <- []byte(FAIL_REPLY)
         continue
       }

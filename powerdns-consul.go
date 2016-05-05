@@ -6,12 +6,11 @@ import (
   "io"
   "sync"
   "flag"
-  "fmt"
+  "log"
   "os/signal"
   "encoding/json"
   "io/ioutil"
   "strconv"
-  log "github.com/golang/glog"
   "github.com/Shark/powerdns-consul/consul"
   consulIface "github.com/Shark/powerdns-consul/consul/iface"
   "github.com/Shark/powerdns-consul/pdns"
@@ -31,7 +30,6 @@ func resolveTransform(resolver *consul.Resolver) (func(*pdns.Request) ([]*pdns.R
     for index, entry := range entries {
       response := &pdns.Response{request.Qname, "IN", entry.Type, strconv.Itoa(int(entry.Ttl)), "1", entry.Payload}
       responses[index] = response
-      log.Infof("Sending response: %v", response)
     }
 
     return responses, nil
@@ -39,27 +37,29 @@ func resolveTransform(resolver *consul.Resolver) (func(*pdns.Request) ([]*pdns.R
 }
 
 func main() {
+  log.SetOutput(os.Stderr)
+  log.SetPrefix("powerdns-consul ")
+
   configFilePath := flag.String("config", "/etc/powerdns-consul/config.json", "path to the config file")
   flag.Parse()
-  flag.Lookup("logtostderr").Value.Set("true")
 
   if _, err := os.Stat(*configFilePath); os.IsNotExist(err) {
-    panic(fmt.Sprintf("Unable to read config from %s: file does not exist", *configFilePath))
+    log.Fatalf("Unable to read config from %s: file does not exist", *configFilePath)
   }
 
   configFileContents, err := ioutil.ReadFile(*configFilePath)
   if err != nil {
-    panic(fmt.Sprintf("Unable to read config file from %s: %v", *configFilePath, err))
+    log.Fatalf("Unable to read config file from %s: %v", *configFilePath, err)
   }
 
   var cfg consul.ResolverConfig = consul.ResolverConfig{DefaultTTL: 60, SoaRefresh: 1200, SoaRetry: 180, SoaExpiry: 1209600, SoaNx: 60}
   err = json.Unmarshal(configFileContents, &cfg)
   if err != nil {
-    panic(fmt.Sprintf("Unable to read config file from: %s: %v", *configFilePath, err))
+    log.Fatalf("Unable to read config file from: %s: %v", *configFilePath, err)
   } else if(cfg.Hostname == "" || cfg.HostmasterEmailAddress == "" || cfg.ConsulAddress == "") {
-    panic("Required settings Hostname, HostmasterEmailAddress or ConsulAddress not set in config file")
+    log.Fatal("Required settings Hostname, HostmasterEmailAddress or ConsulAddress not set in config file")
   } else if(cfg.DefaultTTL == 0 || cfg.SoaRefresh == 0 || cfg.SoaRetry == 0 || cfg.SoaExpiry == 0 || cfg.SoaNx == 0) {
-    log.Errorf("At least one of DefaultTTL, SoaRefresh, SoaRetry, SoaExpiry or SoaNx is set to zero. Is this what you intended?")
+    log.Printf("At least one of DefaultTTL, SoaRefresh, SoaRetry, SoaExpiry or SoaNx is set to zero. Is this what you intended?")
   }
 
   resolver := consul.NewResolver(&cfg)
@@ -79,12 +79,12 @@ func main() {
       line, isPrefix, err := bufReader.ReadLine()
 
       if isPrefix {
-        log.Errorf("Got a prefixed line, returning")
+        log.Printf("Got a prefixed line, returning")
         continue
       }
 
       if err != nil {
-        log.Errorf("Error reading line: %v", err)
+        log.Printf("Error reading line: %v", err)
         continue
       }
 
@@ -105,7 +105,7 @@ func main() {
   signal.Notify(signalChan, os.Interrupt)
   go func() {
     for signal := range signalChan {
-      log.Infof("Received signal: %v, exiting", signal)
+      log.Printf("Received signal: %v, exiting", signal)
       wg.Done()
     }
   }()
