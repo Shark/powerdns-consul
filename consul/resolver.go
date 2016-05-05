@@ -21,6 +21,10 @@ type ResolverConfig struct {
   HostmasterEmailAddress string
   ConsulAddress string
   DefaultTTL uint32
+  SoaRefresh int32
+  SoaRetry int32
+  SoaExpiry int32
+  SoaNx int32
 }
 
 type value struct {
@@ -199,7 +203,13 @@ func (cr *Resolver) Resolve(query *iface.Query) (entries []*iface.Entry, err err
   }
 
   if remainder == "" && (query.Type == "ANY" || query.Type == "SOA") {
-    generator := soa.NewGenerator(time.Now())
+    generatorCfg := &soa.GeneratorConfig{SoaNameServer: cr.Config.Hostname,
+                                         SoaEmailAddr: cr.Config.HostmasterEmailAddress,
+                                         SoaRefresh: cr.Config.SoaRefresh,
+                                         SoaRetry: cr.Config.SoaRetry,
+                                         SoaExpiry: cr.Config.SoaExpiry,
+                                         SoaNx: cr.Config.SoaNx}
+    generator := soa.NewGenerator(generatorCfg, time.Now())
     entry, err := generator.RetrieveOrCreateSOAEntry(cr.kv, zone, cr.Config.Hostname, cr.Config.HostmasterEmailAddress, cr.Config.DefaultTTL)
 
     if err != nil {

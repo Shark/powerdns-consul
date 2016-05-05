@@ -14,14 +14,14 @@ RUN consul_version="0.6.4" && \
     adduser --system --no-create-home --disabled-login --ingroup consul consul && \
     mkdir -p /var/local/lib/consul && \
     chown consul:consul /var/local/lib/consul && \
-    mkdir /etc/consul
+    mkdir /etc/consul /etc/powerdns-consul
 
 RUN apt-get -y autoremove --purge unzip && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
 ADD pdns.powerdns-consul.conf /etc/powerdns/pdns.d/
-ADD powerdns-consul.json /etc/powerdns-consul.json
+ADD config.json /etc/powerdns-consul/config.json
 ADD consul.json /etc/consul/
 ADD end2end_test /usr/local/bin/
 

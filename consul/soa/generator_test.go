@@ -41,8 +41,8 @@ var retrieveOrCreateSOAEntryTests = []struct {
   expectedEntry *iface.Entry
 }{
   {"example.com", "ns.example.com.", "hostmaster.example.com.", 3600, 0, nil, &iface.Entry{"SOA", 3600, "ns.example.com. hostmaster.example.com. 2016050401 1200 180 1209600 3600"}},
-  {"example.com", "ns.example.com.", "hostmaster.example.com.", 3600, 2342, &api.KVPair{Value: []byte("{\"NameServer\":\"ns.example.com.\",\"EmailAddr\":\"hostmaster.example.com.\",\"Sn\":2016050401,\"Refresh\":1200,\"Retry\":180,\"Expiry\":1209600,\"Nx\":3600,\"InternalSnModifyIndex\":2342,\"InternalSnDate\":20160504,\"InternalSnVersion\":1}")}, &iface.Entry{"SOA", 3600, "ns.example.com. hostmaster.example.com. 2016050401 1200 180 1209600 3600"}},
-  {"example.com", "ns.example.com.", "hostmaster.example.com.", 3600, 2343, &api.KVPair{Value: []byte("{\"NameServer\":\"ns.example.com.\",\"EmailAddr\":\"hostmaster.example.com.\",\"Sn\":2016050401,\"Refresh\":1200,\"Retry\":180,\"Expiry\":1209600,\"Nx\":3600,\"InternalSnModifyIndex\":2342,\"InternalSnDate\":20160504,\"InternalSnVersion\":1}")}, &iface.Entry{"SOA", 3600, "ns.example.com. hostmaster.example.com. 2016050402 1200 180 1209600 3600"}},
+  {"example.com", "ns.example.com.", "hostmaster.example.com.", 3600, 2342, &api.KVPair{Value: []byte("{\"SnModifyIndex\":2342,\"SnDate\":20160504,\"SnVersion\":1}")}, &iface.Entry{"SOA", 3600, "ns.example.com. hostmaster.example.com. 2016050401 1200 180 1209600 3600"}},
+  {"example.com", "ns.example.com.", "hostmaster.example.com.", 3600, 2343, &api.KVPair{Value: []byte("{\"SnModifyIndex\":2342,\"SnDate\":20160504,\"SnVersion\":1}")}, &iface.Entry{"SOA", 3600, "ns.example.com. hostmaster.example.com. 2016050402 1200 180 1209600 3600"}},
 }
 
 func TestRetrieveOrCreateSOAEntry(t *testing.T) {
@@ -61,7 +61,8 @@ func TestRetrieveOrCreateSOAEntry(t *testing.T) {
 
     kv := &MockKVStore{listFunc: listFunc, getFunc: getFunc, putFunc: putFunc}
     time, _ := time.Parse("2006-01-02", "2016-05-04")
-    generator := NewGenerator(time)
+    cfg := &GeneratorConfig{"ns.example.com.", "hostmaster.example.com.", 1200, 180, 1209600, 3600}
+    generator := NewGenerator(cfg, time)
     actual, err := generator.RetrieveOrCreateSOAEntry(kv, tt.zone, tt.hostname, tt.hostmasterEmailAddress, tt.defaultTTL)
 
     if err != nil {
@@ -83,9 +84,9 @@ func TestFormatSoaSn(t *testing.T) {
 }
 
 func TestFormatSoaEntry(t *testing.T) {
-  soaEntry := &soaEntry{"A", "B", 1, 2, 3, 4, 5, 6, 7, 8}
-  actual := formatSoaEntry(soaEntry, 9)
-  expected := &iface.Entry{"SOA", 9, "A B 1 2 3 4 5"}
+  soaEntry := &soaEntry{"A", "B", 1, 2, 3, 4, 5}
+  actual := formatSoaEntry(soaEntry, 6)
+  expected := &iface.Entry{"SOA", 6, "A B 1 2 3 4 5"}
 
   if !reflect.DeepEqual(actual, expected) {
     t.Errorf("TestFormatSoaEntry: actual %v, expected %v", actual, expected)

@@ -52,17 +52,17 @@ func main() {
     panic(fmt.Sprintf("Unable to read config file from %s: %v", *configFilePath, err))
   }
 
-  var curConfig consul.ResolverConfig
-  err = json.Unmarshal(configFileContents, &curConfig)
+  var cfg consul.ResolverConfig = consul.ResolverConfig{DefaultTTL: 60, SoaRefresh: 1200, SoaRetry: 180, SoaExpiry: 1209600, SoaNx: 60}
+  err = json.Unmarshal(configFileContents, &cfg)
   if err != nil {
     panic(fmt.Sprintf("Unable to read config file from: %s: %v", *configFilePath, err))
+  } else if(cfg.Hostname == "" || cfg.HostmasterEmailAddress == "" || cfg.ConsulAddress == "") {
+    panic("Required settings Hostname, HostmasterEmailAddress or ConsulAddress not set in config file")
+  } else if(cfg.DefaultTTL == 0 || cfg.SoaRefresh == 0 || cfg.SoaRetry == 0 || cfg.SoaExpiry == 0 || cfg.SoaNx == 0) {
+    log.Errorf("At least one of DefaultTTL, SoaRefresh, SoaRetry, SoaExpiry or SoaNx is set to zero. Is this what you intended?")
   }
 
-  log.Infof("Using Hostname: %s", curConfig.Hostname)
-  log.Infof("Using HostmasterEmailAddress: %s", curConfig.HostmasterEmailAddress)
-  log.Infof("Using ConsulAddress: %s", curConfig.ConsulAddress)
-
-  resolver := consul.NewResolver(&curConfig)
+  resolver := consul.NewResolver(&cfg)
 
   handler := &pdns.Handler{resolveTransform(resolver)}
 

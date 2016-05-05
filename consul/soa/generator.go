@@ -17,17 +17,30 @@ type soaEntry struct {
   Retry int32
   Expiry int32
   Nx int32
-  InternalSnModifyIndex uint64
-  InternalSnDate int
-  InternalSnVersion uint32
+}
+
+type soaRevision struct {
+  SnModifyIndex uint64
+  SnDate int
+  SnVersion uint32
+}
+
+type GeneratorConfig struct {
+  SoaNameServer string
+  SoaEmailAddr string
+  SoaRefresh int32
+  SoaRetry int32
+  SoaExpiry int32
+  SoaNx int32
 }
 
 type Generator struct {
+  cfg *GeneratorConfig
   currentTime time.Time
 }
 
-func NewGenerator(currentTime time.Time) (*Generator) {
-  return &Generator{currentTime}
+func NewGenerator(cfg *GeneratorConfig, currentTime time.Time) (*Generator) {
+  return &Generator{cfg, currentTime}
 }
 
 func (g *Generator) RetrieveOrCreateSOAEntry(kv iface.KVStore, zone string, hostname string, hostmasterEmailAddress string, defaultTTL uint32) (entry *iface.Entry, err error) {
@@ -41,85 +54,60 @@ func (g *Generator) RetrieveOrCreateSOAEntry(kv iface.KVStore, zone string, host
   lastModifyIndex := meta.LastIndex
 
   key := fmt.Sprintf("soa/%s", zone)
-  soaEntryPair, _, err := kv.Get(key, nil)
+  revEntryPair, _, err := kv.Get(key, nil)
 
   if err != nil {
     return nil, err
   }
 
-  var soa soaEntry
+  rev := soaRevision{}
 
-  if soaEntryPair != nil {
-    // update the existing _SOA entry
-    err = json.Unmarshal(soaEntryPair.Value, &soa)
+  if revEntryPair != nil { // use existing revision
+    err = json.Unmarshal(revEntryPair.Value, &rev)
 
     if err != nil {
       return nil, err
     }
 
-    if soa.InternalSnModifyIndex != lastModifyIndex {
+    if rev.SnModifyIndex != lastModifyIndex {
       // update the modify index
-      snDate := getDateFormatted(g.currentTime)
+      rev.SnModifyIndex = lastModifyIndex
 
-      if err != nil {
-        return nil, err
-      }
-
-      var newSnDate int
-      var newSnVersion uint32
-      var newSnModifyIndex = lastModifyIndex
-
-      if soa.InternalSnDate != snDate {
-        newSnDate = snDate
-        newSnVersion = 0
+      curSnDate := getDateFormatted(g.currentTime)
+      if rev.SnDate != curSnDate {
+        rev.SnDate = curSnDate
+        rev.SnVersion = 0
       } else {
-        newSnDate = soa.InternalSnDate
-        // TODO: what about newSnVersion > 99?
-        newSnVersion = soa.InternalSnVersion + 1
-      }
-
-      soa.InternalSnDate = newSnDate
-      soa.InternalSnVersion = newSnVersion
-      soa.InternalSnModifyIndex = newSnModifyIndex
-
-      soa.Sn = formatSoaSn(soa.InternalSnDate, soa.InternalSnVersion)
-
-      json, err := json.Marshal(soa)
-
-      if err != nil {
-        return nil, err
-      }
-
-      _, err = kv.Put(&api.KVPair{Key: key, Value: json}, nil)
-      if err != nil {
-        return nil, err
+        // TODO: what about SnVersion > 99?
+        rev.SnVersion += 1
       }
     } // else nothing to do
-  } else {
-    // generate a new _SOA entry
-    snDate := getDateFormatted(g.currentTime)
-    var snVersion uint32 = 1
-
-    if err != nil {
-      return nil, err
-    }
-
-    sn := formatSoaSn(snDate, snVersion)
-    soa = soaEntry{hostname, hostmasterEmailAddress, sn, 1200, 180, 1209600, int32(defaultTTL), lastModifyIndex, snDate, snVersion}
-
-    json, err := json.Marshal(soa)
-
-    if err != nil {
-      return nil, err
-    }
-
-    _, err = kv.Put(&api.KVPair{Key: key, Value: json}, nil)
-    if err != nil {
-      return nil, err
-    }
+  } else { // create a new revision
+    rev.SnDate = getDateFormatted(g.currentTime)
+    rev.SnVersion = 1
+    rev.SnModifyIndex = lastModifyIndex
   }
 
-  soaAsEntry := formatSoaEntry(&soa, defaultTTL)
+  json, err := json.Marshal(rev)
+
+  if err != nil {
+    return nil, err
+  }
+
+  _, err = kv.Put(&api.KVPair{Key: key, Value: json}, nil)
+  if err != nil {
+    return nil, err
+  }
+
+  soa := &soaEntry{NameServer: g.cfg.SoaNameServer,
+                   EmailAddr: g.cfg.SoaEmailAddr,
+                   Sn: formatSoaSn(rev.SnDate, rev.SnVersion),
+                   Refresh: g.cfg.SoaRefresh,
+                   Retry: g.cfg.SoaRetry,
+                   Expiry: g.cfg.SoaExpiry,
+                   Nx: g.cfg.SoaNx}
+
+  soaAsEntry := formatSoaEntry(soa, defaultTTL)
   return soaAsEntry, nil
 }
 
