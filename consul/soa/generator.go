@@ -84,7 +84,7 @@ func (g *Generator) RetrieveOrCreateSOAEntry(kv iface.KVStore, zone string, host
     } // else nothing to do
   } else { // create a new revision
     rev.SnDate = getDateFormatted(g.currentTime)
-    rev.SnVersion = 1
+    rev.SnVersion = 0
     rev.SnModifyIndex = lastModifyIndex
   }
 
