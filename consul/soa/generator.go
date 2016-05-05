@@ -32,6 +32,7 @@ type GeneratorConfig struct {
   SoaRetry int32
   SoaExpiry int32
   SoaNx int32
+  DefaultTTL uint32
 }
 
 type Generator struct {
@@ -43,7 +44,26 @@ func NewGenerator(cfg *GeneratorConfig, currentTime time.Time) (*Generator) {
   return &Generator{cfg, currentTime}
 }
 
-func (g *Generator) RetrieveOrCreateSOAEntry(kv iface.KVStore, zone string, hostname string, hostmasterEmailAddress string, defaultTTL uint32) (entry *iface.Entry, err error) {
+func (g *Generator) RetrieveOrCreateSOAEntry(kv iface.KVStore, zone string) (entry *iface.Entry, err error) {
+  tries := 3
+  for tries > 0 {
+    entry, err = g.tryToRetrieveOrCreateSOAEntry(kv, zone)
+
+    if err != nil {
+      return nil, err
+    }
+
+    if entry != nil {
+      return entry, err
+    }
+
+    tries--
+  }
+
+  return nil, nil
+}
+
+func (g *Generator) tryToRetrieveOrCreateSOAEntry(kv iface.KVStore, zone string) (entry *iface.Entry, err error) {
   prefix := fmt.Sprintf("zones/%s", zone)
   _, meta, err := kv.List(prefix, nil)
 
@@ -61,6 +81,7 @@ func (g *Generator) RetrieveOrCreateSOAEntry(kv iface.KVStore, zone string, host
   }
 
   rev := soaRevision{}
+  var casModifyIndex uint64 = 0
 
   if revEntryPair != nil { // use existing revision
     err = json.Unmarshal(revEntryPair.Value, &rev)
@@ -68,6 +89,8 @@ func (g *Generator) RetrieveOrCreateSOAEntry(kv iface.KVStore, zone string, host
     if err != nil {
       return nil, err
     }
+
+    casModifyIndex = revEntryPair.ModifyIndex
 
     if rev.SnModifyIndex != lastModifyIndex {
       // update the modify index
@@ -94,8 +117,9 @@ func (g *Generator) RetrieveOrCreateSOAEntry(kv iface.KVStore, zone string, host
     return nil, err
   }
 
-  _, err = kv.Put(&api.KVPair{Key: key, Value: json}, nil)
-  if err != nil {
+  success, _, err := kv.CAS(&api.KVPair{Key: key, Value: json, ModifyIndex: casModifyIndex}, nil)
+
+  if err != nil || !success {
     return nil, err
   }
 
@@ -107,7 +131,7 @@ func (g *Generator) RetrieveOrCreateSOAEntry(kv iface.KVStore, zone string, host
                    Expiry: g.cfg.SoaExpiry,
                    Nx: g.cfg.SoaNx}
 
-  soaAsEntry := formatSoaEntry(soa, defaultTTL)
+  soaAsEntry := formatSoaEntry(soa, g.cfg.DefaultTTL)
   return soaAsEntry, nil
 }
 

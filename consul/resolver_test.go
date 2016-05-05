@@ -12,6 +12,7 @@ type MockKVStore struct {
   putFunc func(p *api.KVPair, q *api.WriteOptions) (*api.WriteMeta, error)
   keysFunc func(prefix string, separator string, q *api.QueryOptions) ([]string, *api.QueryMeta, error)
   listFunc func(prefix string, q *api.QueryOptions) (api.KVPairs, *api.QueryMeta, error)
+  casFunc func(p *api.KVPair, q *api.WriteOptions) (bool, *api.WriteMeta, error)
 }
 
 func (kv *MockKVStore) Get(key string, q *api.QueryOptions) (*api.KVPair, *api.QueryMeta, error) {
@@ -28,6 +29,10 @@ func (kv *MockKVStore) Keys(prefix string, separator string, q *api.QueryOptions
 
 func (kv *MockKVStore) List(prefix string, q *api.QueryOptions) (api.KVPairs, *api.QueryMeta, error) {
   return kv.listFunc(prefix, q)
+}
+
+func (kv *MockKVStore) CAS(p *api.KVPair, q *api.WriteOptions) (bool, *api.WriteMeta, error) {
+  return kv.casFunc(p, q)
 }
 
 func TestAllZones(t *testing.T) {

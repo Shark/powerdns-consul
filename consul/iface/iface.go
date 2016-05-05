@@ -20,4 +20,5 @@ type KVStore interface {
   Put(p *api.KVPair, q *api.WriteOptions) (*api.WriteMeta, error)
   Keys(prefix string, separator string, q *api.QueryOptions) ([]string, *api.QueryMeta, error)
   List(prefix string, q *api.QueryOptions) (api.KVPairs, *api.QueryMeta, error)
+  CAS(p *api.KVPair, q *api.WriteOptions) (bool, *api.WriteMeta, error)
 }

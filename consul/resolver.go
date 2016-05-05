@@ -205,15 +205,18 @@ func (cr *Resolver) Resolve(query *iface.Query) (entries []*iface.Entry, err err
                                          SoaRefresh: cr.Config.SoaRefresh,
                                          SoaRetry: cr.Config.SoaRetry,
                                          SoaExpiry: cr.Config.SoaExpiry,
-                                         SoaNx: cr.Config.SoaNx}
+                                         SoaNx: cr.Config.SoaNx,
+                                         DefaultTTL: cr.Config.DefaultTTL}
     generator := soa.NewGenerator(generatorCfg, time.Now())
-    entry, err := generator.RetrieveOrCreateSOAEntry(cr.kv, zone, cr.Config.Hostname, cr.Config.HostmasterEmailAddress, cr.Config.DefaultTTL)
+    entry, err := generator.RetrieveOrCreateSOAEntry(cr.kv, zone)
 
     if err != nil {
       return nil, err
     }
 
-    entries = append([]*iface.Entry{entry}, entries...)
+    if entry != nil {
+      entries = append([]*iface.Entry{entry}, entries...)
+    }
   }
 
   return entries, nil

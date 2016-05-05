@@ -13,6 +13,7 @@ type MockKVStore struct {
   putFunc func(p *api.KVPair, q *api.WriteOptions) (*api.WriteMeta, error)
   keysFunc func(prefix string, separator string, q *api.QueryOptions) ([]string, *api.QueryMeta, error)
   listFunc func(prefix string, q *api.QueryOptions) (api.KVPairs, *api.QueryMeta, error)
+  casFunc func(p *api.KVPair, q *api.WriteOptions) (bool, *api.WriteMeta, error)
 }
 
 func (kv *MockKVStore) Get(key string, q *api.QueryOptions) (*api.KVPair, *api.QueryMeta, error) {
@@ -31,22 +32,78 @@ func (kv *MockKVStore) List(prefix string, q *api.QueryOptions) (api.KVPairs, *a
   return kv.listFunc(prefix, q)
 }
 
-var retrieveOrCreateSOAEntryTests = []struct {
+func (kv *MockKVStore) CAS(p *api.KVPair, q *api.WriteOptions) (bool, *api.WriteMeta, error) {
+  return kv.casFunc(p, q)
+}
+
+func TestRetrieveOrCreateSOAEntry(t *testing.T) {
+  listFunc := func(prefix string, q *api.QueryOptions) (api.KVPairs, *api.QueryMeta, error) {
+    return nil, &api.QueryMeta{LastIndex: 1234}, nil
+  }
+
+  getFunc := func(key string, q *api.QueryOptions) (*api.KVPair, *api.QueryMeta, error) {
+    return &api.KVPair{Value: []byte("{\"SnModifyIndex\":2342,\"SnDate\":20160504,\"SnVersion\":1}"), ModifyIndex: 1234}, nil, nil
+  }
+
+  casFunc := func(p *api.KVPair, q *api.WriteOptions) (bool, *api.WriteMeta, error) {
+    return true, nil, nil
+  }
+
+  kv := &MockKVStore{listFunc: listFunc, getFunc: getFunc, casFunc: casFunc}
+  time, _ := time.Parse("2006-01-02", "2016-05-04")
+  cfg := &GeneratorConfig{"ns.example.com.", "hostmaster.example.com.", 1200, 180, 1209600, 3600, 3600}
+  generator := NewGenerator(cfg, time)
+
+  actual, err := generator.RetrieveOrCreateSOAEntry(kv, "example.com")
+
+  if err != nil || actual == nil {
+    t.Errorf("TestRetrieveOrCreateSOAEntry: actual %v %v, expected not nil", err, actual)
+  }
+
+  kv.casFunc = func(p *api.KVPair, q *api.WriteOptions) (bool, *api.WriteMeta, error) {
+    return false, nil, nil
+  }
+
+  actual, err = generator.RetrieveOrCreateSOAEntry(kv, "example.com")
+
+  if err != nil || actual != nil {
+    t.Errorf("TestRetrieveOrCreateSOAEntry: actual %v %v, expected nil", err, actual)
+  }
+
+  failureCounter := 2
+  kv.casFunc = func(p *api.KVPair, q *api.WriteOptions) (bool, *api.WriteMeta, error) {
+    if failureCounter > 0 {
+      failureCounter--
+      return false, nil, nil
+    }
+    return true, nil, nil
+  }
+
+  actual, err = generator.RetrieveOrCreateSOAEntry(kv, "example.com")
+
+  if err != nil || actual == nil {
+    t.Errorf("TestRetrieveOrCreateSOAEntry: actual %v %v, expected not nil", err, actual)
+  }
+}
+
+var tryToRetrieveOrCreateSOAEntryTests = []struct {
   zone string
   hostname string
   hostmasterEmailAddress string
   defaultTTL uint32
   lastModifyIndex uint64
   existingSoaEntry *api.KVPair
+  casResult bool
   expectedEntry *iface.Entry
 }{
-  {"example.com", "ns.example.com.", "hostmaster.example.com.", 3600, 0, nil, &iface.Entry{"SOA", 3600, "ns.example.com. hostmaster.example.com. 2016050400 1200 180 1209600 3600"}},
-  {"example.com", "ns.example.com.", "hostmaster.example.com.", 3600, 2342, &api.KVPair{Value: []byte("{\"SnModifyIndex\":2342,\"SnDate\":20160504,\"SnVersion\":1}")}, &iface.Entry{"SOA", 3600, "ns.example.com. hostmaster.example.com. 2016050401 1200 180 1209600 3600"}},
-  {"example.com", "ns.example.com.", "hostmaster.example.com.", 3600, 2343, &api.KVPair{Value: []byte("{\"SnModifyIndex\":2342,\"SnDate\":20160504,\"SnVersion\":1}")}, &iface.Entry{"SOA", 3600, "ns.example.com. hostmaster.example.com. 2016050402 1200 180 1209600 3600"}},
+  {"example.com", "ns.example.com.", "hostmaster.example.com.", 3600, 0, nil, true, &iface.Entry{"SOA", 3600, "ns.example.com. hostmaster.example.com. 2016050400 1200 180 1209600 3600"}},
+  {"example.com", "ns.example.com.", "hostmaster.example.com.", 3600, 2342, &api.KVPair{Value: []byte("{\"SnModifyIndex\":2342,\"SnDate\":20160504,\"SnVersion\":1}"), ModifyIndex: 1234}, true, &iface.Entry{"SOA", 3600, "ns.example.com. hostmaster.example.com. 2016050401 1200 180 1209600 3600"}},
+  {"example.com", "ns.example.com.", "hostmaster.example.com.", 3600, 2343, &api.KVPair{Value: []byte("{\"SnModifyIndex\":2342,\"SnDate\":20160504,\"SnVersion\":1}"), ModifyIndex: 1234}, true, &iface.Entry{"SOA", 3600, "ns.example.com. hostmaster.example.com. 2016050402 1200 180 1209600 3600"}},
+  {"example.com", "ns.example.com.", "hostmaster.example.com.", 3600, 2343, &api.KVPair{Value: []byte("{\"SnModifyIndex\":2342,\"SnDate\":20160504,\"SnVersion\":1}"), ModifyIndex: 1234}, false, nil},
 }
 
-func TestRetrieveOrCreateSOAEntry(t *testing.T) {
-  for _, tt := range retrieveOrCreateSOAEntryTests {
+func TestTryToRetrieveOrCreateSOAEntry(t *testing.T) {
+  for _, tt := range tryToRetrieveOrCreateSOAEntryTests {
     listFunc := func(prefix string, q *api.QueryOptions) (api.KVPairs, *api.QueryMeta, error) {
       return nil, &api.QueryMeta{LastIndex: tt.lastModifyIndex}, nil
     }
@@ -55,22 +112,25 @@ func TestRetrieveOrCreateSOAEntry(t *testing.T) {
       return tt.existingSoaEntry, nil, nil
     }
 
-    putFunc := func(p *api.KVPair, q *api.WriteOptions) (*api.WriteMeta, error) {
-      return nil, nil
+    casFunc := func(p *api.KVPair, q *api.WriteOptions) (bool, *api.WriteMeta, error) {
+      if tt.existingSoaEntry != nil && p.ModifyIndex != tt.existingSoaEntry.ModifyIndex {
+        t.Errorf("TestTryToRetrieveOrCreateSOAEntry: actual %d, expected %d", p.ModifyIndex, tt.existingSoaEntry.ModifyIndex)
+      }
+      return tt.casResult, nil, nil
     }
 
-    kv := &MockKVStore{listFunc: listFunc, getFunc: getFunc, putFunc: putFunc}
+    kv := &MockKVStore{listFunc: listFunc, getFunc: getFunc, casFunc: casFunc}
     time, _ := time.Parse("2006-01-02", "2016-05-04")
-    cfg := &GeneratorConfig{"ns.example.com.", "hostmaster.example.com.", 1200, 180, 1209600, 3600}
+    cfg := &GeneratorConfig{"ns.example.com.", "hostmaster.example.com.", 1200, 180, 1209600, 3600, 3600}
     generator := NewGenerator(cfg, time)
-    actual, err := generator.RetrieveOrCreateSOAEntry(kv, tt.zone, tt.hostname, tt.hostmasterEmailAddress, tt.defaultTTL)
+    actual, err := generator.tryToRetrieveOrCreateSOAEntry(kv, tt.zone)
 
     if err != nil {
-      t.Errorf("TestRetrieveOrCreateSOAEntry: unexpected error %v", err)
+      t.Errorf("TestTryToRetrieveOrCreateSOAEntry: unexpected error %v", err)
     }
 
     if !reflect.DeepEqual(actual, tt.expectedEntry) {
-      t.Errorf("TestRetrieveOrCreateSOAEntry: actual %v, expected %v", actual, tt.expectedEntry)
+      t.Errorf("TestTryToRetrieveOrCreateSOAEntry: actual %v, expected %v", actual, tt.expectedEntry)
     }
   }
 }
