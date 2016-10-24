@@ -1,0 +1,27 @@
+{
+	"comment": "",
+	"ignore": "test",
+	"package": [
+		{
+			"checksumSHA1": "GvxZ0aLOvptAiHfFsukN4lwiFl0=",
+			"path": "github.com/hashicorp/consul/api",
+			"revision": "104b12040a8fbe6153d1a4f1be1b73d37bf699e5",
+			"revisionTime": "2016-10-20T18:40:03Z"
+		},
+		{
+			"checksumSHA1": "Uzyon2091lmwacNsl1hCytjhHtg=",
+			"origin": "github.com/hashicorp/consul/vendor/github.com/hashicorp/go-cleanhttp",
+			"path": "github.com/hashicorp/go-cleanhttp",
+			"revision": "104b12040a8fbe6153d1a4f1be1b73d37bf699e5",
+			"revisionTime": "2016-10-20T18:40:03Z"
+		},
+		{
+			"checksumSHA1": "E3Xcanc9ouQwL+CZGOUyA/+giLg=",
+			"origin": "github.com/hashicorp/consul/vendor/github.com/hashicorp/serf/coordinate",
+			"path": "github.com/hashicorp/serf/coordinate",
+			"revision": "104b12040a8fbe6153d1a4f1be1b73d37bf699e5",
+			"revisionTime": "2016-10-20T18:40:03Z"
+		}
+	],
+	"rootPath": "github.com/Shark/powerdns-consul"
+}
