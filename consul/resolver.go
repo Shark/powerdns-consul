@@ -33,7 +33,7 @@ type value struct {
 }
 
 func allZones(kv iface.KVStore) (zones []string, err error) {
-  keys, _, err := kv.Keys("zones/", "/", nil)
+  keys, _, err := kv.Keys("zones/", "/", &api.QueryOptions{AllowStale: true})
 
   if err != nil {
     return nil, err
@@ -115,7 +115,7 @@ func findKVPairsForZone(kv iface.KVStore, zone string, remainder string) ([]*api
     numSegments = 3 // zones/example.invalid/A -> 3 segments
   }
 
-  unfilteredPairs, _, err := kv.List(prefix, nil)
+  unfilteredPairs, _, err := kv.List(prefix, &api.QueryOptions{AllowStale: true})
 
   if err != nil {
     return nil, err
