@@ -28,6 +28,7 @@ Some of the PowerDNS-related code is inspired by [mindreframer's work](https://g
 
 1. Customize the `powerdns-consul.json.example` configuration
 2. Execute `./powerdns-consul -config=/path/to/powerdns-consul.json`
+  - Set `DEBUG=1` to make powerdns-consul print each request and response
 
 ## Contributing
 1. Fork it!

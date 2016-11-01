@@ -37,6 +37,12 @@ func resolveTransform(resolver *consul.Resolver) (func(*pdns.Request) ([]*pdns.R
   }
 }
 
+func debug(format string, a ...interface{}) {
+  if os.Getenv("DEBUG") != "" {
+    log.Printf(format, a...)
+  }
+}
+
 func main() {
   log.SetOutput(os.Stderr)
   log.SetPrefix("powerdns-consul ")
@@ -95,6 +101,7 @@ func main() {
         }
       }
 
+      debug("In:  %s", line)
       inChan <- line
     }
   }()
@@ -102,6 +109,7 @@ func main() {
   go func() {
     for {
       line := <- outChan
+      debug("Out: %s", line)
       io.WriteString(os.Stdout, string(line))
     }
   }()
