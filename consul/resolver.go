@@ -54,7 +54,8 @@ func allZones(kv iface.KVStore) (zones []string, err error) {
 
 func findZone(zones []string, name string) (zone string, remainder string) {
   // name is expected to conform to a format like "name.example.com."
-  tokens := strings.Split(name, ".")
+  normalizedName := strings.ToLower(name)
+  tokens := strings.Split(normalizedName, ".")
 
   if len(tokens) < 2 {
     return "", ""

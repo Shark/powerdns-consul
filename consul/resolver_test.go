@@ -72,6 +72,7 @@ var findZoneTests = []struct {
   {[]string{"one.com", "two.com", "three.com"}, "öäaö.abc", "", ""},
   {[]string{"öäaö.abc"}, "öäaö.abc", "öäaö.abc", ""},
   {[]string{}, "öäaö.abc", "", ""},
+  {[]string{"one.com"}, "SoME.oNe.CoM", "one.com", "some"},
 }
 
 func TestFindZone(t *testing.T) {
