@@ -1,5 +1,6 @@
 {
   "Hostname": "srv1.example.com.",
   "HostmasterEmailAddress": "hostmaster.srv1.example.com.",
-  "ConsulAddress": "127.0.0.1:8500"
+  "KVBackend": "consul",
+  "KVAddress": "127.0.0.1:8500"
 }

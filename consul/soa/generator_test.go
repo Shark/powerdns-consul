@@ -1,55 +1,53 @@
 package soa
 
 import (
-	"github.com/Shark/powerdns-consul/consul/iface"
-	"github.com/hashicorp/consul/api"
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/Shark/powerdns-consul/consul/iface"
+	"github.com/docker/libkv/store"
 )
 
 type MockKVStore struct {
-	getFunc  func(key string, q *api.QueryOptions) (*api.KVPair, *api.QueryMeta, error)
-	putFunc  func(p *api.KVPair, q *api.WriteOptions) (*api.WriteMeta, error)
-	keysFunc func(prefix string, separator string, q *api.QueryOptions) ([]string, *api.QueryMeta, error)
-	listFunc func(prefix string, q *api.QueryOptions) (api.KVPairs, *api.QueryMeta, error)
-	casFunc  func(p *api.KVPair, q *api.WriteOptions) (bool, *api.WriteMeta, error)
+	getFunc       func(string) (*store.KVPair, error)
+	putFunc       func(key string, value []byte, options *store.WriteOptions) error
+	listFunc      func(directory string) ([]*store.KVPair, error)
+	atomicPutFunc func(key string, value []byte, previous *store.KVPair, options *store.WriteOptions) (bool, *store.KVPair, error)
 }
 
-func (kv *MockKVStore) Get(key string, q *api.QueryOptions) (*api.KVPair, *api.QueryMeta, error) {
-	return kv.getFunc(key, q)
+func (kv *MockKVStore) Get(key string) (*store.KVPair, error) {
+	return kv.getFunc(key)
 }
 
-func (kv *MockKVStore) Put(p *api.KVPair, q *api.WriteOptions) (*api.WriteMeta, error) {
-	return kv.putFunc(p, q)
+func (kv *MockKVStore) Put(key string, value []byte, options *store.WriteOptions) error {
+	return kv.putFunc(key, value, options)
 }
 
-func (kv *MockKVStore) Keys(prefix string, separator string, q *api.QueryOptions) ([]string, *api.QueryMeta, error) {
-	return kv.keysFunc(prefix, separator, q)
+func (kv *MockKVStore) List(directory string) ([]*store.KVPair, error) {
+	return kv.listFunc(directory)
 }
 
-func (kv *MockKVStore) List(prefix string, q *api.QueryOptions) (api.KVPairs, *api.QueryMeta, error) {
-	return kv.listFunc(prefix, q)
-}
-
-func (kv *MockKVStore) CAS(p *api.KVPair, q *api.WriteOptions) (bool, *api.WriteMeta, error) {
-	return kv.casFunc(p, q)
+func (kv *MockKVStore) AtomicPut(key string, value []byte, previous *store.KVPair, options *store.WriteOptions) (bool, *store.KVPair, error) {
+	return kv.atomicPutFunc(key, value, previous, options)
 }
 
 func TestRetrieveOrCreateSOAEntry(t *testing.T) {
-	listFunc := func(prefix string, q *api.QueryOptions) (api.KVPairs, *api.QueryMeta, error) {
-		return nil, &api.QueryMeta{LastIndex: 1234}, nil
+	listFunc := func(directory string) ([]*store.KVPair, error) {
+		return []*store.KVPair{
+			&store.KVPair{LastIndex: 1234},
+		}, nil
 	}
 
-	getFunc := func(key string, q *api.QueryOptions) (*api.KVPair, *api.QueryMeta, error) {
-		return &api.KVPair{Value: []byte("{\"SnModifyIndex\":2342,\"SnDate\":20160504,\"SnVersion\":1}"), ModifyIndex: 1234}, nil, nil
+	getFunc := func(key string) (*store.KVPair, error) {
+		return &store.KVPair{Value: []byte("{\"SnModifyIndex\":2342,\"SnDate\":20160504,\"SnVersion\":1}"), LastIndex: 1234}, nil
 	}
 
-	casFunc := func(p *api.KVPair, q *api.WriteOptions) (bool, *api.WriteMeta, error) {
+	atomicPutFunc := func(key string, value []byte, previous *store.KVPair, options *store.WriteOptions) (bool, *store.KVPair, error) {
 		return true, nil, nil
 	}
 
-	kv := &MockKVStore{listFunc: listFunc, getFunc: getFunc, casFunc: casFunc}
+	kv := &MockKVStore{listFunc: listFunc, getFunc: getFunc, atomicPutFunc: atomicPutFunc}
 	time, _ := time.Parse("2006-01-02", "2016-05-04")
 	cfg := &GeneratorConfig{"ns.example.com.", "hostmaster.example.com.", 1200, 180, 1209600, 3600, 3600}
 	generator := NewGenerator(cfg, time)
@@ -60,7 +58,7 @@ func TestRetrieveOrCreateSOAEntry(t *testing.T) {
 		t.Errorf("TestRetrieveOrCreateSOAEntry: actual %v %v, expected not nil", err, actual)
 	}
 
-	kv.casFunc = func(p *api.KVPair, q *api.WriteOptions) (bool, *api.WriteMeta, error) {
+	kv.atomicPutFunc = func(key string, value []byte, previous *store.KVPair, options *store.WriteOptions) (bool, *store.KVPair, error) {
 		return false, nil, nil
 	}
 
@@ -71,7 +69,7 @@ func TestRetrieveOrCreateSOAEntry(t *testing.T) {
 	}
 
 	failureCounter := 2
-	kv.casFunc = func(p *api.KVPair, q *api.WriteOptions) (bool, *api.WriteMeta, error) {
+	kv.atomicPutFunc = func(key string, value []byte, previous *store.KVPair, options *store.WriteOptions) (bool, *store.KVPair, error) {
 		if failureCounter > 0 {
 			failureCounter--
 			return false, nil, nil
@@ -92,34 +90,36 @@ var tryToRetrieveOrCreateSOAEntryTests = []struct {
 	hostmasterEmailAddress string
 	defaultTTL             uint32
 	lastModifyIndex        uint64
-	existingSoaEntry       *api.KVPair
+	existingSoaEntry       *store.KVPair
 	casResult              bool
 	expectedEntry          *iface.Entry
 }{
 	{"example.com", "ns.example.com.", "hostmaster.example.com.", 3600, 0, nil, true, &iface.Entry{"SOA", 3600, "ns.example.com. hostmaster.example.com. 2016050400 1200 180 1209600 3600"}},
-	{"example.com", "ns.example.com.", "hostmaster.example.com.", 3600, 2342, &api.KVPair{Value: []byte("{\"SnModifyIndex\":2342,\"SnDate\":20160504,\"SnVersion\":1}"), ModifyIndex: 1234}, true, &iface.Entry{"SOA", 3600, "ns.example.com. hostmaster.example.com. 2016050401 1200 180 1209600 3600"}},
-	{"example.com", "ns.example.com.", "hostmaster.example.com.", 3600, 2343, &api.KVPair{Value: []byte("{\"SnModifyIndex\":2342,\"SnDate\":20160504,\"SnVersion\":1}"), ModifyIndex: 1234}, true, &iface.Entry{"SOA", 3600, "ns.example.com. hostmaster.example.com. 2016050402 1200 180 1209600 3600"}},
-	{"example.com", "ns.example.com.", "hostmaster.example.com.", 3600, 2343, &api.KVPair{Value: []byte("{\"SnModifyIndex\":2342,\"SnDate\":20160504,\"SnVersion\":1}"), ModifyIndex: 1234}, false, nil},
+	{"example.com", "ns.example.com.", "hostmaster.example.com.", 3600, 2342, &store.KVPair{Value: []byte("{\"SnModifyIndex\":2342,\"SnDate\":20160504,\"SnVersion\":1}"), LastIndex: 1234}, true, &iface.Entry{"SOA", 3600, "ns.example.com. hostmaster.example.com. 2016050401 1200 180 1209600 3600"}},
+	{"example.com", "ns.example.com.", "hostmaster.example.com.", 3600, 2343, &store.KVPair{Value: []byte("{\"SnModifyIndex\":2342,\"SnDate\":20160504,\"SnVersion\":1}"), LastIndex: 1234}, true, &iface.Entry{"SOA", 3600, "ns.example.com. hostmaster.example.com. 2016050402 1200 180 1209600 3600"}},
+	{"example.com", "ns.example.com.", "hostmaster.example.com.", 3600, 2343, &store.KVPair{Value: []byte("{\"SnModifyIndex\":2342,\"SnDate\":20160504,\"SnVersion\":1}"), LastIndex: 1234}, false, nil},
 }
 
 func TestTryToRetrieveOrCreateSOAEntry(t *testing.T) {
 	for _, tt := range tryToRetrieveOrCreateSOAEntryTests {
-		listFunc := func(prefix string, q *api.QueryOptions) (api.KVPairs, *api.QueryMeta, error) {
-			return nil, &api.QueryMeta{LastIndex: tt.lastModifyIndex}, nil
+		listFunc := func(directory string) ([]*store.KVPair, error) {
+			return []*store.KVPair{
+				&store.KVPair{LastIndex: tt.lastModifyIndex},
+			}, nil
 		}
 
-		getFunc := func(key string, q *api.QueryOptions) (*api.KVPair, *api.QueryMeta, error) {
-			return tt.existingSoaEntry, nil, nil
+		getFunc := func(key string) (*store.KVPair, error) {
+			return tt.existingSoaEntry, nil
 		}
 
-		casFunc := func(p *api.KVPair, q *api.WriteOptions) (bool, *api.WriteMeta, error) {
-			if tt.existingSoaEntry != nil && p.ModifyIndex != tt.existingSoaEntry.ModifyIndex {
-				t.Errorf("TestTryToRetrieveOrCreateSOAEntry: actual %d, expected %d", p.ModifyIndex, tt.existingSoaEntry.ModifyIndex)
+		atomicPutFunc := func(key string, value []byte, previous *store.KVPair, options *store.WriteOptions) (bool, *store.KVPair, error) {
+			if tt.existingSoaEntry != nil && previous.LastIndex != tt.existingSoaEntry.LastIndex {
+				t.Errorf("TestTryToRetrieveOrCreateSOAEntry: actual %d, expected %d", previous.LastIndex, tt.existingSoaEntry.LastIndex)
 			}
 			return tt.casResult, nil, nil
 		}
 
-		kv := &MockKVStore{listFunc: listFunc, getFunc: getFunc, casFunc: casFunc}
+		kv := &MockKVStore{listFunc: listFunc, getFunc: getFunc, atomicPutFunc: atomicPutFunc}
 		time, _ := time.Parse("2006-01-02", "2016-05-04")
 		cfg := &GeneratorConfig{"ns.example.com.", "hostmaster.example.com.", 1200, 180, 1209600, 3600, 3600}
 		generator := NewGenerator(cfg, time)

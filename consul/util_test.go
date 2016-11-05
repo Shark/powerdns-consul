@@ -1,18 +1,19 @@
 package consul
 
 import (
-	"github.com/hashicorp/consul/api"
 	"testing"
+
+	"github.com/docker/libkv/store"
 )
 
 var kvPairNumSegmentsTests = []struct {
-	kvPair   *api.KVPair
+	kvPair   *store.KVPair
 	expected int
 }{
-	{&api.KVPair{Key: ""}, 1},
-	{&api.KVPair{Key: "abc"}, 1},
-	{&api.KVPair{Key: "abc/def"}, 2},
-	{&api.KVPair{Key: "abc/def/ghi"}, 3},
+	{&store.KVPair{Key: ""}, 1},
+	{&store.KVPair{Key: "abc"}, 1},
+	{&store.KVPair{Key: "abc/def"}, 2},
+	{&store.KVPair{Key: "abc/def/ghi"}, 3},
 }
 
 func TestKvPairNumSegments(t *testing.T) {
@@ -25,10 +26,10 @@ func TestKvPairNumSegments(t *testing.T) {
 }
 
 func TestFilterKVPairs(t *testing.T) {
-	pairs := []*api.KVPair{
-		&api.KVPair{Key: "abc/def"},
-		&api.KVPair{Key: "abc/def/ghi"},
-		&api.KVPair{Key: ""},
+	pairs := []*store.KVPair{
+		&store.KVPair{Key: "abc/def"},
+		&store.KVPair{Key: "abc/def/ghi"},
+		&store.KVPair{Key: ""},
 	}
 
 	actual := filterKVPairs(pairs, 2)

@@ -1,7 +1,7 @@
 package iface
 
 import (
-	"github.com/hashicorp/consul/api"
+	"github.com/docker/libkv/store"
 )
 
 type Query struct {
@@ -16,9 +16,8 @@ type Entry struct {
 }
 
 type KVStore interface {
-	Get(key string, q *api.QueryOptions) (*api.KVPair, *api.QueryMeta, error)
-	Put(p *api.KVPair, q *api.WriteOptions) (*api.WriteMeta, error)
-	Keys(prefix string, separator string, q *api.QueryOptions) ([]string, *api.QueryMeta, error)
-	List(prefix string, q *api.QueryOptions) (api.KVPairs, *api.QueryMeta, error)
-	CAS(p *api.KVPair, q *api.WriteOptions) (bool, *api.WriteMeta, error)
+	Get(key string) (*store.KVPair, error)
+	Put(key string, value []byte, options *store.WriteOptions) error
+	List(directory string) ([]*store.KVPair, error)
+	AtomicPut(key string, value []byte, previous *store.KVPair, options *store.WriteOptions) (bool, *store.KVPair, error)
 }

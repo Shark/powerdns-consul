@@ -3,24 +3,42 @@
 	"ignore": "test",
 	"package": [
 		{
-			"checksumSHA1": "GvxZ0aLOvptAiHfFsukN4lwiFl0=",
-			"path": "github.com/hashicorp/consul/api",
-			"revision": "104b12040a8fbe6153d1a4f1be1b73d37bf699e5",
-			"revisionTime": "2016-10-20T18:40:03Z"
+			"checksumSHA1": "iI+sxLi0ePLAhK3nhmcxZWlVHvY=",
+			"path": "github.com/docker/libkv",
+			"revision": "3fce6a0f26e07da3eac45796a8e255547a47a750",
+			"revisionTime": "2016-08-26T06:07:01Z"
 		},
 		{
-			"checksumSHA1": "Uzyon2091lmwacNsl1hCytjhHtg=",
+			"checksumSHA1": "f0riXTSoNiWTnXkQCUtXC9TwouM=",
+			"path": "github.com/docker/libkv/store",
+			"revision": "3fce6a0f26e07da3eac45796a8e255547a47a750",
+			"revisionTime": "2016-08-26T06:07:01Z"
+		},
+		{
+			"checksumSHA1": "v+iCfrCauJEp903y7Mx2F8SbQvk=",
+			"path": "github.com/docker/libkv/store/consul",
+			"revision": "3fce6a0f26e07da3eac45796a8e255547a47a750",
+			"revisionTime": "2016-08-26T06:07:01Z"
+		},
+		{
+			"checksumSHA1": "rix4F+CSyo3wrlhURNU8sTxYjzg=",
+			"path": "github.com/hashicorp/consul/api",
+			"revision": "963916e990bccc288e41186ca35762c2c620f0df",
+			"revisionTime": "2016-04-20T17:16:06Z"
+		},
+		{
+			"checksumSHA1": "fSe5y1UgTDeYlnFfUcDA1zzcw+U=",
 			"origin": "github.com/hashicorp/consul/vendor/github.com/hashicorp/go-cleanhttp",
 			"path": "github.com/hashicorp/go-cleanhttp",
-			"revision": "104b12040a8fbe6153d1a4f1be1b73d37bf699e5",
-			"revisionTime": "2016-10-20T18:40:03Z"
+			"revision": "963916e990bccc288e41186ca35762c2c620f0df",
+			"revisionTime": "2016-04-20T17:16:06Z"
 		},
 		{
-			"checksumSHA1": "E3Xcanc9ouQwL+CZGOUyA/+giLg=",
+			"checksumSHA1": "oO8c5+ZEFssewIqvHJkGEXHV+i0=",
 			"origin": "github.com/hashicorp/consul/vendor/github.com/hashicorp/serf/coordinate",
 			"path": "github.com/hashicorp/serf/coordinate",
-			"revision": "104b12040a8fbe6153d1a4f1be1b73d37bf699e5",
-			"revisionTime": "2016-10-20T18:40:03Z"
+			"revision": "963916e990bccc288e41186ca35762c2c620f0df",
+			"revisionTime": "2016-04-20T17:16:06Z"
 		}
 	],
 	"rootPath": "github.com/Shark/powerdns-consul"

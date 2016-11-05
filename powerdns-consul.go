@@ -4,9 +4,6 @@ import (
 	"bufio"
 	"encoding/json"
 	"flag"
-	"github.com/Shark/powerdns-consul/consul"
-	consulIface "github.com/Shark/powerdns-consul/consul/iface"
-	"github.com/Shark/powerdns-consul/pdns"
 	"io"
 	"io/ioutil"
 	"log"
@@ -15,6 +12,10 @@ import (
 	"strconv"
 	"sync"
 	"syscall"
+
+	"github.com/Shark/powerdns-consul/consul"
+	consulIface "github.com/Shark/powerdns-consul/consul/iface"
+	"github.com/Shark/powerdns-consul/pdns"
 )
 
 func resolveTransform(resolver *consul.Resolver) func(*pdns.Request) ([]*pdns.Response, error) {
@@ -63,8 +64,8 @@ func main() {
 	err = json.Unmarshal(configFileContents, &cfg)
 	if err != nil {
 		log.Fatalf("Unable to read config file from: %s: %v", *configFilePath, err)
-	} else if cfg.Hostname == "" || cfg.HostmasterEmailAddress == "" || cfg.ConsulAddress == "" {
-		log.Fatal("Required settings Hostname, HostmasterEmailAddress or ConsulAddress not set in config file")
+	} else if cfg.Hostname == "" || cfg.HostmasterEmailAddress == "" || cfg.KVBackend == "" || cfg.KVAddress == "" {
+		log.Fatal("Required settings Hostname, HostmasterEmailAddress, KVBackend or KVAddress not set in config file")
 	} else if cfg.DefaultTTL == 0 || cfg.SoaRefresh == 0 || cfg.SoaRetry == 0 || cfg.SoaExpiry == 0 || cfg.SoaNx == 0 {
 		log.Printf("At least one of DefaultTTL, SoaRefresh, SoaRetry, SoaExpiry or SoaNx is set to zero. Is this what you intended?")
 	}

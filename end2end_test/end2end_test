@@ -35,6 +35,7 @@ main() {
 20 mx2.example.com."
   dns_test "mx1.example.com A" "127.0.0.2"
   dns_test "mx2.example.com A" "127.0.0.3"
+  dns_test "mX2.exAmPlE.com A" "127.0.0.3"
 
   local soa_result="$(dig @127.0.0.1 example.com SOA +short)"
   if [[ $(expr length "$soa_result") -lt 10 ]]; then

@@ -3,12 +3,15 @@ package consul
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/Shark/powerdns-consul/consul/iface"
-	"github.com/Shark/powerdns-consul/consul/soa"
-	"github.com/hashicorp/consul/api"
 	"log"
 	"strings"
 	"time"
+
+	"github.com/Shark/powerdns-consul/consul/iface"
+	"github.com/Shark/powerdns-consul/consul/soa"
+	"github.com/docker/libkv"
+	"github.com/docker/libkv/store"
+	"github.com/docker/libkv/store/consul"
 )
 
 type Resolver struct {
@@ -19,7 +22,8 @@ type Resolver struct {
 type ResolverConfig struct {
 	Hostname               string
 	HostmasterEmailAddress string
-	ConsulAddress          string
+	KVBackend              string
+	KVAddress              string
 	DefaultTTL             uint32
 	SoaRefresh             int32
 	SoaRetry               int32
@@ -33,14 +37,14 @@ type value struct {
 }
 
 func allZones(kv iface.KVStore) (zones []string, err error) {
-	keys, _, err := kv.Keys("zones/", "/", &api.QueryOptions{AllowStale: true})
+	pairs, err := kv.List("zones")
 
 	if err != nil {
 		return nil, err
 	}
 
-	for _, key := range keys {
-		tokens := strings.Split(key, "/")
+	for _, pair := range pairs {
+		tokens := strings.Split(pair.Key, "/")
 
 		if len(tokens) != 3 {
 			continue
@@ -102,7 +106,7 @@ func findZone(zones []string, name string) (zone string, remainder string) {
 	return zone, remainder
 }
 
-func findKVPairsForZone(kv iface.KVStore, zone string, remainder string) ([]*api.KVPair, error) {
+func findKVPairsForZone(kv iface.KVStore, zone string, remainder string) ([]*store.KVPair, error) {
 	var (
 		prefix      string
 		numSegments int
@@ -116,7 +120,7 @@ func findKVPairsForZone(kv iface.KVStore, zone string, remainder string) ([]*api
 		numSegments = 3 // zones/example.invalid/A -> 3 segments
 	}
 
-	unfilteredPairs, _, err := kv.List(prefix, &api.QueryOptions{AllowStale: true})
+	unfilteredPairs, err := kv.List(prefix)
 
 	if err != nil {
 		return nil, err
@@ -168,13 +172,19 @@ func findZoneEntries(kv iface.KVStore, zone string, remainder string, filter_ent
 }
 
 func NewResolver(config *ResolverConfig) *Resolver {
-	client, err := api.NewClient(&api.Config{Address: config.ConsulAddress})
+	consul.Register()
+
+	client, err := libkv.NewStore(
+		store.Backend(config.KVBackend),
+		[]string{config.KVAddress},
+		nil,
+	)
 
 	if err != nil {
-		log.Panicf("Unable to instantiate Consul client: %v", err)
+		log.Panicf("Unable to instantiate libkv client: %v", err)
 	}
 
-	return &Resolver{config, client.KV()}
+	return &Resolver{config, client}
 }
 
 func (cr *Resolver) Resolve(query *iface.Query) (entries []*iface.Entry, err error) {

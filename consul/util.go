@@ -1,12 +1,13 @@
 package consul
 
 import (
-	"github.com/hashicorp/consul/api"
 	"strings"
+
+	"github.com/docker/libkv/store"
 )
 
-func filterKVPairs(pairs []*api.KVPair, numSegments int) []*api.KVPair {
-	var resultPairs []*api.KVPair
+func filterKVPairs(pairs []*store.KVPair, numSegments int) []*store.KVPair {
+	var resultPairs []*store.KVPair
 
 	for _, pair := range pairs {
 		if kvPairNumSegments(pair) == numSegments {
@@ -17,6 +18,6 @@ func filterKVPairs(pairs []*api.KVPair, numSegments int) []*api.KVPair {
 	return resultPairs
 }
 
-func kvPairNumSegments(pair *api.KVPair) int {
+func kvPairNumSegments(pair *store.KVPair) int {
 	return len(strings.Split(pair.Key, "/"))
 }

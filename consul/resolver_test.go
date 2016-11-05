@@ -1,45 +1,48 @@
 package consul
 
 import (
-	"github.com/Shark/powerdns-consul/consul/iface"
-	"github.com/hashicorp/consul/api"
 	"reflect"
 	"testing"
+
+	"github.com/Shark/powerdns-consul/consul/iface"
+	"github.com/docker/libkv/store"
 )
 
 type MockKVStore struct {
-	getFunc  func(key string, q *api.QueryOptions) (*api.KVPair, *api.QueryMeta, error)
-	putFunc  func(p *api.KVPair, q *api.WriteOptions) (*api.WriteMeta, error)
-	keysFunc func(prefix string, separator string, q *api.QueryOptions) ([]string, *api.QueryMeta, error)
-	listFunc func(prefix string, q *api.QueryOptions) (api.KVPairs, *api.QueryMeta, error)
-	casFunc  func(p *api.KVPair, q *api.WriteOptions) (bool, *api.WriteMeta, error)
+	getFunc       func(string) (*store.KVPair, error)
+	putFunc       func(key string, value []byte, options *store.WriteOptions) error
+	listFunc      func(directory string) ([]*store.KVPair, error)
+	atomicPutFunc func(key string, value []byte, previous *store.KVPair, options *store.WriteOptions) (bool, *store.KVPair, error)
 }
 
-func (kv *MockKVStore) Get(key string, q *api.QueryOptions) (*api.KVPair, *api.QueryMeta, error) {
-	return kv.getFunc(key, q)
+func (kv *MockKVStore) Get(key string) (*store.KVPair, error) {
+	return kv.getFunc(key)
 }
 
-func (kv *MockKVStore) Put(p *api.KVPair, q *api.WriteOptions) (*api.WriteMeta, error) {
-	return kv.putFunc(p, q)
+func (kv *MockKVStore) Put(key string, value []byte, options *store.WriteOptions) error {
+	return kv.putFunc(key, value, options)
 }
 
-func (kv *MockKVStore) Keys(prefix string, separator string, q *api.QueryOptions) ([]string, *api.QueryMeta, error) {
-	return kv.keysFunc(prefix, separator, q)
+func (kv *MockKVStore) List(directory string) ([]*store.KVPair, error) {
+	return kv.listFunc(directory)
 }
 
-func (kv *MockKVStore) List(prefix string, q *api.QueryOptions) (api.KVPairs, *api.QueryMeta, error) {
-	return kv.listFunc(prefix, q)
-}
-
-func (kv *MockKVStore) CAS(p *api.KVPair, q *api.WriteOptions) (bool, *api.WriteMeta, error) {
-	return kv.casFunc(p, q)
+func (kv *MockKVStore) AtomicPut(key string, value []byte, previous *store.KVPair, options *store.WriteOptions) (bool, *store.KVPair, error) {
+	return kv.atomicPutFunc(key, value, previous, options)
 }
 
 func TestAllZones(t *testing.T) {
-	keysFunc := func(prefix string, separator string, q *api.QueryOptions) ([]string, *api.QueryMeta, error) {
-		return []string{"zones/a/", "zones/b/", "zones/c/", "zones/d", "zones", ""}, nil, nil
+	listFunc := func(directory string) ([]*store.KVPair, error) {
+		return []*store.KVPair{
+			&store.KVPair{Key: "zones/a/"},
+			&store.KVPair{Key: "zones/b/"},
+			&store.KVPair{Key: "zones/c/"},
+			&store.KVPair{Key: "zones/d"},
+			&store.KVPair{Key: "zones"},
+			&store.KVPair{Key: ""},
+		}, nil
 	}
-	kv := &MockKVStore{keysFunc: keysFunc}
+	kv := &MockKVStore{listFunc: listFunc}
 	expected := []string{"a", "b", "c"}
 	actual, err := allZones(kv)
 
@@ -86,47 +89,47 @@ func TestFindZone(t *testing.T) {
 }
 
 var findKVPairsForZoneTests = []struct {
-	entries         []*api.KVPair
+	entries         []*store.KVPair
 	zone            string
 	remainder       string
-	expectedKVPairs []*api.KVPair
+	expectedKVPairs []*store.KVPair
 }{
 	{
-		[]*api.KVPair{
-			&api.KVPair{Key: "zones/example.com/A", Value: []byte("Value")},
-			&api.KVPair{Key: "zones/example.com/TXT", Value: []byte("Value")},
-			&api.KVPair{Key: "zones/example.com/sub/A", Value: []byte("NoValue")},
-			&api.KVPair{Key: "zones/example.com", Value: []byte("NoValue")},
-			&api.KVPair{Key: "some/other", Value: []byte("NoValue")},
+		[]*store.KVPair{
+			&store.KVPair{Key: "zones/example.com/A", Value: []byte("Value")},
+			&store.KVPair{Key: "zones/example.com/TXT", Value: []byte("Value")},
+			&store.KVPair{Key: "zones/example.com/sub/A", Value: []byte("NoValue")},
+			&store.KVPair{Key: "zones/example.com", Value: []byte("NoValue")},
+			&store.KVPair{Key: "some/other", Value: []byte("NoValue")},
 		},
 		"example.com",
 		"",
-		[]*api.KVPair{
-			&api.KVPair{Key: "zones/example.com/A", Value: []byte("Value")},
-			&api.KVPair{Key: "zones/example.com/TXT", Value: []byte("Value")},
+		[]*store.KVPair{
+			&store.KVPair{Key: "zones/example.com/A", Value: []byte("Value")},
+			&store.KVPair{Key: "zones/example.com/TXT", Value: []byte("Value")},
 		},
 	},
 	{
-		[]*api.KVPair{
-			&api.KVPair{Key: "zones/example.com/sub/A", Value: []byte("Value")},
-			&api.KVPair{Key: "zones/example.com/sub/TXT", Value: []byte("Value")},
-			&api.KVPair{Key: "zones/example.com/A", Value: []byte("NoValue")},
-			&api.KVPair{Key: "zones/example.com/sub", Value: []byte("NoValue")},
-			&api.KVPair{Key: "some/other", Value: []byte("NoValue")},
+		[]*store.KVPair{
+			&store.KVPair{Key: "zones/example.com/sub/A", Value: []byte("Value")},
+			&store.KVPair{Key: "zones/example.com/sub/TXT", Value: []byte("Value")},
+			&store.KVPair{Key: "zones/example.com/A", Value: []byte("NoValue")},
+			&store.KVPair{Key: "zones/example.com/sub", Value: []byte("NoValue")},
+			&store.KVPair{Key: "some/other", Value: []byte("NoValue")},
 		},
 		"example.com",
 		"sub",
-		[]*api.KVPair{
-			&api.KVPair{Key: "zones/example.com/sub/A", Value: []byte("Value")},
-			&api.KVPair{Key: "zones/example.com/sub/TXT", Value: []byte("Value")},
+		[]*store.KVPair{
+			&store.KVPair{Key: "zones/example.com/sub/A", Value: []byte("Value")},
+			&store.KVPair{Key: "zones/example.com/sub/TXT", Value: []byte("Value")},
 		},
 	},
 }
 
 func TestFindKVPairsForZone(t *testing.T) {
 	for _, tt := range findKVPairsForZoneTests {
-		listFunc := func(prefix string, q *api.QueryOptions) (api.KVPairs, *api.QueryMeta, error) {
-			return tt.entries, nil, nil
+		listFunc := func(directory string) ([]*store.KVPair, error) {
+			return tt.entries, nil
 		}
 		kv := &MockKVStore{listFunc: listFunc}
 		actual, err := findKVPairsForZone(kv, tt.zone, tt.remainder)
@@ -142,7 +145,7 @@ func TestFindKVPairsForZone(t *testing.T) {
 }
 
 var findZoneEntriesTests = []struct {
-	entries         []*api.KVPair
+	entries         []*store.KVPair
 	zone            string
 	remainder       string
 	filterEntryType string
@@ -150,14 +153,14 @@ var findZoneEntriesTests = []struct {
 	expectedEntries []*iface.Entry
 }{
 	{
-		[]*api.KVPair{
-			&api.KVPair{Key: "zones/example.com/A", Value: []byte("[{\"Payload\":\"Value\"}]")},
-			&api.KVPair{Key: "zones/example.com/TXT", Value: []byte("[{\"TTL\":3600,\"Payload\":\"SomeOtherValue\"}]")},
-			&api.KVPair{Key: "zones/example.com/MX", Value: []byte("[{\"Payload\":\"10\\tmx1.example.com\"},{\"Payload\":\"20\\tmx2.example.com\"}]")},
-			&api.KVPair{Key: "zones/example.com/CNAME", Value: []byte("invalid_json")},
-			&api.KVPair{Key: "zones/example.com/sub/A", Value: []byte("NoValue")},
-			&api.KVPair{Key: "zones/example.com", Value: []byte("[{\"TTL\":3600,\"Payload\":\"SomeOtherValue\"}]")},
-			&api.KVPair{Key: "some/other", Value: []byte("NoValue")},
+		[]*store.KVPair{
+			&store.KVPair{Key: "zones/example.com/A", Value: []byte("[{\"Payload\":\"Value\"}]")},
+			&store.KVPair{Key: "zones/example.com/TXT", Value: []byte("[{\"TTL\":3600,\"Payload\":\"SomeOtherValue\"}]")},
+			&store.KVPair{Key: "zones/example.com/MX", Value: []byte("[{\"Payload\":\"10\\tmx1.example.com\"},{\"Payload\":\"20\\tmx2.example.com\"}]")},
+			&store.KVPair{Key: "zones/example.com/CNAME", Value: []byte("invalid_json")},
+			&store.KVPair{Key: "zones/example.com/sub/A", Value: []byte("NoValue")},
+			&store.KVPair{Key: "zones/example.com", Value: []byte("[{\"TTL\":3600,\"Payload\":\"SomeOtherValue\"}]")},
+			&store.KVPair{Key: "some/other", Value: []byte("NoValue")},
 		},
 		"example.com",
 		"",
@@ -171,14 +174,14 @@ var findZoneEntriesTests = []struct {
 		},
 	},
 	{
-		[]*api.KVPair{
-			&api.KVPair{Key: "zones/example.com/sub/A", Value: []byte("[{\"Payload\":\"Value\"}]")},
-			&api.KVPair{Key: "zones/example.com/sub/TXT", Value: []byte("[{\"TTL\":3600,\"Payload\":\"SomeOtherValue\"}]")},
-			&api.KVPair{Key: "zones/example.com/sub/MX", Value: []byte("[{\"Payload\":\"10\\tmx1.example.com\"},{\"Payload\":\"20\\tmx2.example.com\"}]")},
-			&api.KVPair{Key: "zones/example.com/sub/CNAME", Value: []byte("invalid_json")},
-			&api.KVPair{Key: "zones/example.com/A", Value: []byte("NoValue")},
-			&api.KVPair{Key: "zones/example.com/sub", Value: []byte("[{\"TTL\":3600,\"Payload\":\"SomeOtherValue\"}]")},
-			&api.KVPair{Key: "some/other", Value: []byte("NoValue")},
+		[]*store.KVPair{
+			&store.KVPair{Key: "zones/example.com/sub/A", Value: []byte("[{\"Payload\":\"Value\"}]")},
+			&store.KVPair{Key: "zones/example.com/sub/TXT", Value: []byte("[{\"TTL\":3600,\"Payload\":\"SomeOtherValue\"}]")},
+			&store.KVPair{Key: "zones/example.com/sub/MX", Value: []byte("[{\"Payload\":\"10\\tmx1.example.com\"},{\"Payload\":\"20\\tmx2.example.com\"}]")},
+			&store.KVPair{Key: "zones/example.com/sub/CNAME", Value: []byte("invalid_json")},
+			&store.KVPair{Key: "zones/example.com/A", Value: []byte("NoValue")},
+			&store.KVPair{Key: "zones/example.com/sub", Value: []byte("[{\"TTL\":3600,\"Payload\":\"SomeOtherValue\"}]")},
+			&store.KVPair{Key: "some/other", Value: []byte("NoValue")},
 		},
 		"example.com",
 		"sub",
@@ -192,10 +195,10 @@ var findZoneEntriesTests = []struct {
 		},
 	},
 	{
-		[]*api.KVPair{
-			&api.KVPair{Key: "zones/example.com/A", Value: []byte("invalid_json")},
-			&api.KVPair{Key: "zones/example.com/sub/A", Value: []byte("NoValue")},
-			&api.KVPair{Key: "some/other", Value: []byte("NoValue")},
+		[]*store.KVPair{
+			&store.KVPair{Key: "zones/example.com/A", Value: []byte("invalid_json")},
+			&store.KVPair{Key: "zones/example.com/sub/A", Value: []byte("NoValue")},
+			&store.KVPair{Key: "some/other", Value: []byte("NoValue")},
 		},
 		"example.com",
 		"",
@@ -207,8 +210,8 @@ var findZoneEntriesTests = []struct {
 
 func TestFindZoneEntries(t *testing.T) {
 	for _, tt := range findZoneEntriesTests {
-		listFunc := func(prefix string, q *api.QueryOptions) (api.KVPairs, *api.QueryMeta, error) {
-			return tt.entries, nil, nil
+		listFunc := func(directory string) ([]*store.KVPair, error) {
+			return tt.entries, nil
 		}
 		kv := &MockKVStore{listFunc: listFunc}
 		actual, err := findZoneEntries(kv, tt.zone, tt.remainder, tt.filterEntryType, tt.defaultTTL)

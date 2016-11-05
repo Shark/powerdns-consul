@@ -3,10 +3,11 @@ package soa
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/Shark/powerdns-consul/consul/iface"
-	"github.com/hashicorp/consul/api"
 	"strconv"
 	"time"
+
+	"github.com/Shark/powerdns-consul/consul/iface"
+	"github.com/docker/libkv/store"
 )
 
 type soaEntry struct {
@@ -65,18 +66,23 @@ func (g *Generator) RetrieveOrCreateSOAEntry(kv iface.KVStore, zone string) (ent
 
 func (g *Generator) tryToRetrieveOrCreateSOAEntry(kv iface.KVStore, zone string) (entry *iface.Entry, err error) {
 	prefix := fmt.Sprintf("zones/%s", zone)
-	_, meta, err := kv.List(prefix, nil)
+	pairs, err := kv.List(prefix)
 
 	if err != nil {
 		return nil, err
 	}
 
-	lastModifyIndex := meta.LastIndex
+	var lastModifyIndex uint64
+	for _, pair := range pairs {
+		if lastModifyIndex == 0 || pair.LastIndex > lastModifyIndex {
+			lastModifyIndex = pair.LastIndex
+		}
+	}
 
 	key := fmt.Sprintf("soa/%s", zone)
-	revEntryPair, _, err := kv.Get(key, nil)
+	revEntryPair, err := kv.Get(key)
 
-	if err != nil {
+	if err != nil && err != store.ErrKeyNotFound {
 		return nil, err
 	}
 
@@ -90,7 +96,7 @@ func (g *Generator) tryToRetrieveOrCreateSOAEntry(kv iface.KVStore, zone string)
 			return nil, err
 		}
 
-		casModifyIndex = revEntryPair.ModifyIndex
+		casModifyIndex = revEntryPair.LastIndex
 
 		if rev.SnModifyIndex != lastModifyIndex {
 			// update the modify index
@@ -117,9 +123,9 @@ func (g *Generator) tryToRetrieveOrCreateSOAEntry(kv iface.KVStore, zone string)
 		return nil, err
 	}
 
-	success, _, err := kv.CAS(&api.KVPair{Key: key, Value: json, ModifyIndex: casModifyIndex}, nil)
+	ok, _, err := kv.AtomicPut(key, json, &store.KVPair{LastIndex: casModifyIndex}, nil)
 
-	if err != nil || !success {
+	if err != nil || !ok {
 		return nil, err
 	}
 
