@@ -6,8 +6,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/Shark/powerdns-consul/backend/iface"
-	"github.com/docker/libkv/store"
+	"github.com/Shark/powerdns-consul/backend/store"
 )
 
 type soaEntry struct {
@@ -45,7 +44,7 @@ func NewGenerator(cfg *GeneratorConfig, currentTime time.Time) *Generator {
 	return &Generator{cfg, currentTime}
 }
 
-func (g *Generator) RetrieveOrCreateSOAEntry(kv iface.KVStore, zone string) (entry *iface.Entry, err error) {
+func (g *Generator) RetrieveOrCreateSOAEntry(kv store.Store, zone string) (entry *store.Entry, err error) {
 	tries := 3
 	for tries > 0 {
 		entry, err = g.tryToRetrieveOrCreateSOAEntry(kv, zone)
@@ -64,7 +63,7 @@ func (g *Generator) RetrieveOrCreateSOAEntry(kv iface.KVStore, zone string) (ent
 	return nil, nil
 }
 
-func (g *Generator) tryToRetrieveOrCreateSOAEntry(kv iface.KVStore, zone string) (entry *iface.Entry, err error) {
+func (g *Generator) tryToRetrieveOrCreateSOAEntry(kv store.Store, zone string) (entry *store.Entry, err error) {
 	prefix := fmt.Sprintf("zones/%s", zone)
 	pairs, err := kv.List(prefix)
 
@@ -74,8 +73,8 @@ func (g *Generator) tryToRetrieveOrCreateSOAEntry(kv iface.KVStore, zone string)
 
 	var lastModifyIndex uint64
 	for _, pair := range pairs {
-		if lastModifyIndex == 0 || pair.LastIndex > lastModifyIndex {
-			lastModifyIndex = pair.LastIndex
+		if lastModifyIndex == 0 || pair.LastIndex() > lastModifyIndex {
+			lastModifyIndex = pair.LastIndex()
 		}
 	}
 
@@ -89,7 +88,7 @@ func (g *Generator) tryToRetrieveOrCreateSOAEntry(kv iface.KVStore, zone string)
 	rev := soaRevision{}
 
 	if revEntryPair != nil { // use existing revision
-		err = json.Unmarshal(revEntryPair.Value, &rev)
+		err = json.Unmarshal(revEntryPair.Value(), &rev)
 
 		if err != nil {
 			return nil, err
@@ -149,10 +148,10 @@ func formatSoaSn(snDate int, snVersion uint32) (sn uint32) {
 	return uint32(soaSnInt)
 }
 
-func formatSoaEntry(sEntry *soaEntry, ttl uint32) *iface.Entry {
+func formatSoaEntry(sEntry *soaEntry, ttl uint32) *store.Entry {
 	value := fmt.Sprintf("%s %s %d %d %d %d %d", sEntry.NameServer, sEntry.EmailAddr, sEntry.Sn, sEntry.Refresh, sEntry.Retry, sEntry.Expiry, sEntry.Nx)
 
-	return &iface.Entry{"SOA", ttl, value}
+	return &store.Entry{"SOA", ttl, value}
 }
 
 func getDateFormatted(time time.Time) int {

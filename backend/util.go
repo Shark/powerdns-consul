@@ -3,11 +3,11 @@ package backend
 import (
 	"strings"
 
-	"github.com/docker/libkv/store"
+	"github.com/Shark/powerdns-consul/backend/store"
 )
 
-func filterKVPairs(pairs []*store.KVPair, numSegments int) []*store.KVPair {
-	var resultPairs []*store.KVPair
+func filterKVPairs(pairs []store.Pair, numSegments int) []store.Pair {
+	var resultPairs []store.Pair
 
 	for _, pair := range pairs {
 		if kvPairNumSegments(pair) == numSegments {
@@ -18,8 +18,8 @@ func filterKVPairs(pairs []*store.KVPair, numSegments int) []*store.KVPair {
 	return resultPairs
 }
 
-func kvPairNumSegments(pair *store.KVPair) int {
-	return len(strings.Split(normalizeKey(pair.Key), "/"))
+func kvPairNumSegments(pair store.Pair) int {
+	return len(strings.Split(normalizeKey(pair.Key()), "/"))
 }
 
 func normalizeKey(key string) string {

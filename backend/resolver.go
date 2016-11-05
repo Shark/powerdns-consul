@@ -7,17 +7,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Shark/powerdns-consul/backend/iface"
 	"github.com/Shark/powerdns-consul/backend/soa"
-	"github.com/docker/libkv"
-	"github.com/docker/libkv/store"
-	"github.com/docker/libkv/store/consul"
-	"github.com/docker/libkv/store/etcd"
+	"github.com/Shark/powerdns-consul/backend/store"
 )
 
 type Resolver struct {
 	Config *ResolverConfig
-	kv     iface.KVStore
+	kv     store.Store
 }
 
 type ResolverConfig struct {
@@ -37,7 +33,7 @@ type value struct {
 	Payload *string
 }
 
-func allZones(kv iface.KVStore) (zones []string, err error) {
+func allZones(kv store.Store) (zones []string, err error) {
 	// backends behavior is inconsistent:
 	// say a key exists at zones/example.invalid/A
 	// - consul will return a pair with key zones/example.invalid/A
@@ -51,7 +47,7 @@ func allZones(kv iface.KVStore) (zones []string, err error) {
 	var zonesMap = make(map[string]bool)
 
 	for _, pair := range pairs {
-		tokens := strings.Split(normalizeKey(pair.Key), "/")
+		tokens := strings.Split(normalizeKey(pair.Key()), "/")
 
 		if len(tokens) < 2 {
 			continue
@@ -120,7 +116,7 @@ func findZone(zones []string, name string) (zone string, remainder string) {
 	return zone, remainder
 }
 
-func findKVPairsForZone(kv iface.KVStore, zone string, remainder string) ([]*store.KVPair, error) {
+func findKVPairsForZone(kv store.Store, zone string, remainder string) ([]store.Pair, error) {
 	var (
 		prefix      string
 		numSegments int
@@ -143,7 +139,7 @@ func findKVPairsForZone(kv iface.KVStore, zone string, remainder string) ([]*sto
 	return filterKVPairs(unfilteredPairs, numSegments), nil
 }
 
-func findZoneEntries(kv iface.KVStore, zone string, remainder string, filter_entry_type string, defaultTTL uint32) (entries []*iface.Entry, err error) {
+func findZoneEntries(kv store.Store, zone string, remainder string, filter_entry_type string, defaultTTL uint32) (entries []*store.Entry, err error) {
 	pairs, err := findKVPairsForZone(kv, zone, remainder)
 
 	if err != nil {
@@ -151,15 +147,15 @@ func findZoneEntries(kv iface.KVStore, zone string, remainder string, filter_ent
 	}
 
 	for _, pair := range pairs {
-		entry_type_tokens := strings.Split(normalizeKey(pair.Key), "/")
+		entry_type_tokens := strings.Split(normalizeKey(pair.Key()), "/")
 		entry_type := entry_type_tokens[len(entry_type_tokens)-1]
 
 		if filter_entry_type == "ANY" || entry_type == filter_entry_type {
 			values_in_entry := make([]value, 0)
-			err = json.Unmarshal(pair.Value, &values_in_entry)
+			err = json.Unmarshal(pair.Value(), &values_in_entry)
 
 			if err != nil {
-				log.Printf("Discarding key %s: %v", normalizeKey(pair.Key), err)
+				log.Printf("Discarding key %s: %v", normalizeKey(pair.Key()), err)
 				continue
 			}
 
@@ -172,11 +168,11 @@ func findZoneEntries(kv iface.KVStore, zone string, remainder string, filter_ent
 				}
 
 				if value.Payload == nil {
-					log.Printf("Discarding entry in key %s because payload is missing", normalizeKey(pair.Key))
+					log.Printf("Discarding entry in key %s because payload is missing", normalizeKey(pair.Key()))
 					continue
 				}
 
-				entry := &iface.Entry{entry_type, ttl, *value.Payload}
+				entry := &store.Entry{entry_type, ttl, *value.Payload}
 				entries = append(entries, entry)
 			}
 		}
@@ -185,24 +181,11 @@ func findZoneEntries(kv iface.KVStore, zone string, remainder string, filter_ent
 	return entries, nil
 }
 
-func NewResolver(config *ResolverConfig) *Resolver {
-	consul.Register()
-	etcd.Register()
-
-	client, err := libkv.NewStore(
-		store.Backend(config.KVBackend),
-		[]string{config.KVAddress},
-		nil,
-	)
-
-	if err != nil {
-		log.Panicf("Unable to instantiate libkv client: %v", err)
-	}
-
-	return &Resolver{config, client}
+func NewResolver(config *ResolverConfig, kvStore store.Store) *Resolver {
+	return &Resolver{config, kvStore}
 }
 
-func (cr *Resolver) Resolve(query *iface.Query) (entries []*iface.Entry, err error) {
+func (cr *Resolver) Resolve(query *store.Query) (entries []*store.Entry, err error) {
 	zones, err := allZones(cr.kv)
 
 	if err != nil {
@@ -216,7 +199,7 @@ func (cr *Resolver) Resolve(query *iface.Query) (entries []*iface.Entry, err err
 	}
 
 	if zone == "" {
-		return make([]*iface.Entry, 0), nil
+		return make([]*store.Entry, 0), nil
 	}
 
 	entries, err = findZoneEntries(cr.kv, zone, remainder, query.Type, cr.Config.DefaultTTL)
@@ -241,7 +224,7 @@ func (cr *Resolver) Resolve(query *iface.Query) (entries []*iface.Entry, err err
 		}
 
 		if entry != nil {
-			entries = append([]*iface.Entry{entry}, entries...)
+			entries = append([]*store.Entry{entry}, entries...)
 		}
 	}
 

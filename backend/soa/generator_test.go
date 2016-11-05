@@ -5,49 +5,25 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Shark/powerdns-consul/backend/iface"
-	"github.com/docker/libkv/store"
+	"github.com/Shark/powerdns-consul/backend/store"
 )
 
-type MockKVStore struct {
-	getFunc       func(string) (*store.KVPair, error)
-	putFunc       func(key string, value []byte, options *store.WriteOptions) error
-	listFunc      func(directory string) ([]*store.KVPair, error)
-	atomicPutFunc func(key string, value []byte, previous *store.KVPair, options *store.WriteOptions) (bool, *store.KVPair, error)
-}
-
-func (kv *MockKVStore) Get(key string) (*store.KVPair, error) {
-	return kv.getFunc(key)
-}
-
-func (kv *MockKVStore) Put(key string, value []byte, options *store.WriteOptions) error {
-	return kv.putFunc(key, value, options)
-}
-
-func (kv *MockKVStore) List(directory string) ([]*store.KVPair, error) {
-	return kv.listFunc(directory)
-}
-
-func (kv *MockKVStore) AtomicPut(key string, value []byte, previous *store.KVPair, options *store.WriteOptions) (bool, *store.KVPair, error) {
-	return kv.atomicPutFunc(key, value, previous, options)
-}
-
 func TestRetrieveOrCreateSOAEntry(t *testing.T) {
-	listFunc := func(directory string) ([]*store.KVPair, error) {
-		return []*store.KVPair{
-			&store.KVPair{LastIndex: 1234},
+	listFunc := func(directory string) ([]store.Pair, error) {
+		return []store.Pair{
+			store.NewPair("", []byte{}, 1234),
 		}, nil
 	}
 
-	getFunc := func(key string) (*store.KVPair, error) {
-		return &store.KVPair{Value: []byte("{\"SnModifyIndex\":2342,\"SnDate\":20160504,\"SnVersion\":1}"), LastIndex: 1234}, nil
+	getFunc := func(key string) (store.Pair, error) {
+		return store.NewPair("", []byte("{\"SnModifyIndex\":2342,\"SnDate\":20160504,\"SnVersion\":1}"), 1234), nil
 	}
 
-	atomicPutFunc := func(key string, value []byte, previous *store.KVPair, options *store.WriteOptions) (bool, *store.KVPair, error) {
+	atomicPutFunc := func(key string, value []byte, previous store.Pair, options *store.WriteOptions) (bool, store.Pair, error) {
 		return true, nil, nil
 	}
 
-	kv := &MockKVStore{listFunc: listFunc, getFunc: getFunc, atomicPutFunc: atomicPutFunc}
+	kv := &store.MockStore{ListFunc: listFunc, GetFunc: getFunc, AtomicPutFunc: atomicPutFunc}
 	time, _ := time.Parse("2006-01-02", "2016-05-04")
 	cfg := &GeneratorConfig{"ns.example.com.", "hostmaster.example.com.", 1200, 180, 1209600, 3600, 3600}
 	generator := NewGenerator(cfg, time)
@@ -58,7 +34,7 @@ func TestRetrieveOrCreateSOAEntry(t *testing.T) {
 		t.Errorf("TestRetrieveOrCreateSOAEntry: actual %v %v, expected not nil", err, actual)
 	}
 
-	kv.atomicPutFunc = func(key string, value []byte, previous *store.KVPair, options *store.WriteOptions) (bool, *store.KVPair, error) {
+	kv.AtomicPutFunc = func(key string, value []byte, previous store.Pair, options *store.WriteOptions) (bool, store.Pair, error) {
 		return false, nil, nil
 	}
 
@@ -69,7 +45,7 @@ func TestRetrieveOrCreateSOAEntry(t *testing.T) {
 	}
 
 	failureCounter := 2
-	kv.atomicPutFunc = func(key string, value []byte, previous *store.KVPair, options *store.WriteOptions) (bool, *store.KVPair, error) {
+	kv.AtomicPutFunc = func(key string, value []byte, previous store.Pair, options *store.WriteOptions) (bool, store.Pair, error) {
 		if failureCounter > 0 {
 			failureCounter--
 			return false, nil, nil
@@ -90,36 +66,36 @@ var tryToRetrieveOrCreateSOAEntryTests = []struct {
 	hostmasterEmailAddress string
 	defaultTTL             uint32
 	lastModifyIndex        uint64
-	existingSoaEntry       *store.KVPair
+	existingSoaEntry       store.Pair
 	casResult              bool
-	expectedEntry          *iface.Entry
+	expectedEntry          *store.Entry
 }{
-	{"example.com", "ns.example.com.", "hostmaster.example.com.", 3600, 0, nil, true, &iface.Entry{"SOA", 3600, "ns.example.com. hostmaster.example.com. 2016050400 1200 180 1209600 3600"}},
-	{"example.com", "ns.example.com.", "hostmaster.example.com.", 3600, 2342, &store.KVPair{Value: []byte("{\"SnModifyIndex\":2342,\"SnDate\":20160504,\"SnVersion\":1}"), LastIndex: 1234}, true, &iface.Entry{"SOA", 3600, "ns.example.com. hostmaster.example.com. 2016050401 1200 180 1209600 3600"}},
-	{"example.com", "ns.example.com.", "hostmaster.example.com.", 3600, 2343, &store.KVPair{Value: []byte("{\"SnModifyIndex\":2342,\"SnDate\":20160504,\"SnVersion\":1}"), LastIndex: 1234}, true, &iface.Entry{"SOA", 3600, "ns.example.com. hostmaster.example.com. 2016050402 1200 180 1209600 3600"}},
-	{"example.com", "ns.example.com.", "hostmaster.example.com.", 3600, 2343, &store.KVPair{Value: []byte("{\"SnModifyIndex\":2342,\"SnDate\":20160504,\"SnVersion\":1}"), LastIndex: 1234}, false, nil},
+	{"example.com", "ns.example.com.", "hostmaster.example.com.", 3600, 0, nil, true, &store.Entry{"SOA", 3600, "ns.example.com. hostmaster.example.com. 2016050400 1200 180 1209600 3600"}},
+	{"example.com", "ns.example.com.", "hostmaster.example.com.", 3600, 2342, store.NewPair("", []byte("{\"SnModifyIndex\":2342,\"SnDate\":20160504,\"SnVersion\":1}"), 1234), true, &store.Entry{"SOA", 3600, "ns.example.com. hostmaster.example.com. 2016050401 1200 180 1209600 3600"}},
+	{"example.com", "ns.example.com.", "hostmaster.example.com.", 3600, 2343, store.NewPair("", []byte("{\"SnModifyIndex\":2342,\"SnDate\":20160504,\"SnVersion\":1}"), 1234), true, &store.Entry{"SOA", 3600, "ns.example.com. hostmaster.example.com. 2016050402 1200 180 1209600 3600"}},
+	{"example.com", "ns.example.com.", "hostmaster.example.com.", 3600, 2343, store.NewPair("", []byte("{\"SnModifyIndex\":2342,\"SnDate\":20160504,\"SnVersion\":1}"), 1234), false, nil},
 }
 
 func TestTryToRetrieveOrCreateSOAEntry(t *testing.T) {
 	for _, tt := range tryToRetrieveOrCreateSOAEntryTests {
-		listFunc := func(directory string) ([]*store.KVPair, error) {
-			return []*store.KVPair{
-				&store.KVPair{LastIndex: tt.lastModifyIndex},
+		listFunc := func(directory string) ([]store.Pair, error) {
+			return []store.Pair{
+				store.NewPair("", []byte{}, tt.lastModifyIndex),
 			}, nil
 		}
 
-		getFunc := func(key string) (*store.KVPair, error) {
+		getFunc := func(key string) (store.Pair, error) {
 			return tt.existingSoaEntry, nil
 		}
 
-		atomicPutFunc := func(key string, value []byte, previous *store.KVPair, options *store.WriteOptions) (bool, *store.KVPair, error) {
-			if tt.existingSoaEntry != nil && previous.LastIndex != tt.existingSoaEntry.LastIndex {
-				t.Errorf("TestTryToRetrieveOrCreateSOAEntry: actual %d, expected %d", previous.LastIndex, tt.existingSoaEntry.LastIndex)
+		atomicPutFunc := func(key string, value []byte, previous store.Pair, options *store.WriteOptions) (bool, store.Pair, error) {
+			if tt.existingSoaEntry != nil && previous.LastIndex() != tt.existingSoaEntry.LastIndex() {
+				t.Errorf("TestTryToRetrieveOrCreateSOAEntry: actual %d, expected %d", previous.LastIndex(), tt.existingSoaEntry.LastIndex())
 			}
 			return tt.casResult, nil, nil
 		}
 
-		kv := &MockKVStore{listFunc: listFunc, getFunc: getFunc, atomicPutFunc: atomicPutFunc}
+		kv := &store.MockStore{ListFunc: listFunc, GetFunc: getFunc, AtomicPutFunc: atomicPutFunc}
 		time, _ := time.Parse("2006-01-02", "2016-05-04")
 		cfg := &GeneratorConfig{"ns.example.com.", "hostmaster.example.com.", 1200, 180, 1209600, 3600, 3600}
 		generator := NewGenerator(cfg, time)
@@ -146,7 +122,7 @@ func TestFormatSoaSn(t *testing.T) {
 func TestFormatSoaEntry(t *testing.T) {
 	soaEntry := &soaEntry{"A", "B", 1, 2, 3, 4, 5}
 	actual := formatSoaEntry(soaEntry, 6)
-	expected := &iface.Entry{"SOA", 6, "A B 1 2 3 4 5"}
+	expected := &store.Entry{"SOA", 6, "A B 1 2 3 4 5"}
 
 	if !reflect.DeepEqual(actual, expected) {
 		t.Errorf("TestFormatSoaEntry: actual %v, expected %v", actual, expected)

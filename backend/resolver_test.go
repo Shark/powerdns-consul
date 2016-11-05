@@ -5,45 +5,21 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/Shark/powerdns-consul/backend/iface"
-	"github.com/docker/libkv/store"
+	"github.com/Shark/powerdns-consul/backend/store"
 )
 
-type MockKVStore struct {
-	getFunc       func(string) (*store.KVPair, error)
-	putFunc       func(key string, value []byte, options *store.WriteOptions) error
-	listFunc      func(directory string) ([]*store.KVPair, error)
-	atomicPutFunc func(key string, value []byte, previous *store.KVPair, options *store.WriteOptions) (bool, *store.KVPair, error)
-}
-
-func (kv *MockKVStore) Get(key string) (*store.KVPair, error) {
-	return kv.getFunc(key)
-}
-
-func (kv *MockKVStore) Put(key string, value []byte, options *store.WriteOptions) error {
-	return kv.putFunc(key, value, options)
-}
-
-func (kv *MockKVStore) List(directory string) ([]*store.KVPair, error) {
-	return kv.listFunc(directory)
-}
-
-func (kv *MockKVStore) AtomicPut(key string, value []byte, previous *store.KVPair, options *store.WriteOptions) (bool, *store.KVPair, error) {
-	return kv.atomicPutFunc(key, value, previous, options)
-}
-
 func TestAllZones(t *testing.T) {
-	listFunc := func(directory string) ([]*store.KVPair, error) {
-		return []*store.KVPair{
-			&store.KVPair{Key: "zones/a/"},
-			&store.KVPair{Key: "zones/b/A"},
-			&store.KVPair{Key: "zones/c/sub/A"},
-			&store.KVPair{Key: "zones/d"},
-			&store.KVPair{Key: "zones"},
-			&store.KVPair{Key: ""},
+	listFunc := func(directory string) ([]store.Pair, error) {
+		return []store.Pair{
+			store.NewPair("zones/a/", []byte{}, 0),
+			store.NewPair("zones/b/A", []byte{}, 0),
+			store.NewPair("zones/c/sub/A", []byte{}, 0),
+			store.NewPair("zones/d", []byte{}, 0),
+			store.NewPair("zones", []byte{}, 0),
+			store.NewPair("", []byte{}, 0),
 		}, nil
 	}
-	kv := &MockKVStore{listFunc: listFunc}
+	kv := store.MockStore{ListFunc: listFunc}
 	expected := []string{"a", "b", "c", "d"}
 	actual, err := allZones(kv)
 
@@ -91,49 +67,49 @@ func TestFindZone(t *testing.T) {
 }
 
 var findKVPairsForZoneTests = []struct {
-	entries         []*store.KVPair
+	entries         []store.Pair
 	zone            string
 	remainder       string
-	expectedKVPairs []*store.KVPair
+	expectedKVPairs []store.Pair
 }{
 	{
-		[]*store.KVPair{
-			&store.KVPair{Key: "zones/example.com/A", Value: []byte("Value")},
-			&store.KVPair{Key: "zones/example.com/TXT", Value: []byte("Value")},
-			&store.KVPair{Key: "zones/example.com/sub/A", Value: []byte("NoValue")},
-			&store.KVPair{Key: "zones/example.com", Value: []byte("NoValue")},
-			&store.KVPair{Key: "some/other", Value: []byte("NoValue")},
+		[]store.Pair{
+			store.NewPair("zones/example.com/A", []byte("Value"), 0),
+			store.NewPair("zones/example.com/TXT", []byte("Value"), 0),
+			store.NewPair("zones/example.com/sub/A", []byte("Value"), 0),
+			store.NewPair("zones/example.com", []byte("NoValue"), 0),
+			store.NewPair("some/other", []byte("NoValue"), 0),
 		},
 		"example.com",
 		"",
-		[]*store.KVPair{
-			&store.KVPair{Key: "zones/example.com/A", Value: []byte("Value")},
-			&store.KVPair{Key: "zones/example.com/TXT", Value: []byte("Value")},
+		[]store.Pair{
+			store.NewPair("zones/example.com/A", []byte("Value"), 0),
+			store.NewPair("zones/example.com/TXT", []byte("Value"), 0),
 		},
 	},
 	{
-		[]*store.KVPair{
-			&store.KVPair{Key: "zones/example.com/sub/A", Value: []byte("Value")},
-			&store.KVPair{Key: "zones/example.com/sub/TXT", Value: []byte("Value")},
-			&store.KVPair{Key: "zones/example.com/A", Value: []byte("NoValue")},
-			&store.KVPair{Key: "zones/example.com/sub", Value: []byte("NoValue")},
-			&store.KVPair{Key: "some/other", Value: []byte("NoValue")},
+		[]store.Pair{
+			store.NewPair("zones/example.com/sub/A", []byte("Value"), 0),
+			store.NewPair("zones/example.com/sub/TXT", []byte("Value"), 0),
+			store.NewPair("zones/example.com/A", []byte("NoValue"), 0),
+			store.NewPair("zones/example.com/sub", []byte("NoValue"), 0),
+			store.NewPair("some/other", []byte("NoValue"), 0),
 		},
 		"example.com",
 		"sub",
-		[]*store.KVPair{
-			&store.KVPair{Key: "zones/example.com/sub/A", Value: []byte("Value")},
-			&store.KVPair{Key: "zones/example.com/sub/TXT", Value: []byte("Value")},
+		[]store.Pair{
+			store.NewPair("zones/example.com/sub/A", []byte("Value"), 0),
+			store.NewPair("zones/example.com/sub/TXT", []byte("Value"), 0),
 		},
 	},
 }
 
 func TestFindKVPairsForZone(t *testing.T) {
 	for _, tt := range findKVPairsForZoneTests {
-		listFunc := func(directory string) ([]*store.KVPair, error) {
+		listFunc := func(directory string) ([]store.Pair, error) {
 			return tt.entries, nil
 		}
-		kv := &MockKVStore{listFunc: listFunc}
+		kv := &store.MockStore{ListFunc: listFunc}
 		actual, err := findKVPairsForZone(kv, tt.zone, tt.remainder)
 
 		if err != nil {
@@ -147,60 +123,60 @@ func TestFindKVPairsForZone(t *testing.T) {
 }
 
 var findZoneEntriesTests = []struct {
-	entries         []*store.KVPair
+	entries         []store.Pair
 	zone            string
 	remainder       string
 	filterEntryType string
 	defaultTTL      uint32
-	expectedEntries []*iface.Entry
+	expectedEntries []*store.Entry
 }{
 	{
-		[]*store.KVPair{
-			&store.KVPair{Key: "zones/example.com/A", Value: []byte("[{\"Payload\":\"Value\"}]")},
-			&store.KVPair{Key: "zones/example.com/TXT", Value: []byte("[{\"TTL\":3600,\"Payload\":\"SomeOtherValue\"}]")},
-			&store.KVPair{Key: "zones/example.com/MX", Value: []byte("[{\"Payload\":\"10\\tmx1.example.com\"},{\"Payload\":\"20\\tmx2.example.com\"}]")},
-			&store.KVPair{Key: "zones/example.com/CNAME", Value: []byte("invalid_json")},
-			&store.KVPair{Key: "zones/example.com/sub/A", Value: []byte("NoValue")},
-			&store.KVPair{Key: "zones/example.com", Value: []byte("[{\"TTL\":3600,\"Payload\":\"SomeOtherValue\"}]")},
-			&store.KVPair{Key: "some/other", Value: []byte("NoValue")},
+		[]store.Pair{
+			store.NewPair("zones/example.com/A", []byte("[{\"Payload\":\"Value\"}]"), 0),
+			store.NewPair("zones/example.com/TXT", []byte("[{\"TTL\":3600,\"Payload\":\"SomeOtherValue\"}]"), 0),
+			store.NewPair("zones/example.com/MX", []byte("[{\"Payload\":\"10\\tmx1.example.com\"},{\"Payload\":\"20\\tmx2.example.com\"}]"), 0),
+			store.NewPair("zones/example.com/CNAME", []byte("invalid_json"), 0),
+			store.NewPair("zones/example.com/sub/A", []byte("NoValue"), 0),
+			store.NewPair("zones/example.com", []byte("[{\"TTL\":3600,\"Payload\":\"SomeOtherValue\"}]"), 0),
+			store.NewPair("some/other", []byte("NoValue"), 0),
 		},
 		"example.com",
 		"",
 		"ANY",
 		60,
-		[]*iface.Entry{
-			&iface.Entry{"A", 60, "Value"},
-			&iface.Entry{"TXT", 3600, "SomeOtherValue"},
-			&iface.Entry{"MX", 60, "10\tmx1.example.com"},
-			&iface.Entry{"MX", 60, "20\tmx2.example.com"},
+		[]*store.Entry{
+			&store.Entry{"A", 60, "Value"},
+			&store.Entry{"TXT", 3600, "SomeOtherValue"},
+			&store.Entry{"MX", 60, "10\tmx1.example.com"},
+			&store.Entry{"MX", 60, "20\tmx2.example.com"},
 		},
 	},
 	{
-		[]*store.KVPair{
-			&store.KVPair{Key: "zones/example.com/sub/A", Value: []byte("[{\"Payload\":\"Value\"}]")},
-			&store.KVPair{Key: "zones/example.com/sub/TXT", Value: []byte("[{\"TTL\":3600,\"Payload\":\"SomeOtherValue\"}]")},
-			&store.KVPair{Key: "zones/example.com/sub/MX", Value: []byte("[{\"Payload\":\"10\\tmx1.example.com\"},{\"Payload\":\"20\\tmx2.example.com\"}]")},
-			&store.KVPair{Key: "zones/example.com/sub/CNAME", Value: []byte("invalid_json")},
-			&store.KVPair{Key: "zones/example.com/A", Value: []byte("NoValue")},
-			&store.KVPair{Key: "zones/example.com/sub", Value: []byte("[{\"TTL\":3600,\"Payload\":\"SomeOtherValue\"}]")},
-			&store.KVPair{Key: "some/other", Value: []byte("NoValue")},
+		[]store.Pair{
+			store.NewPair("zones/example.com/sub/A", []byte("[{\"Payload\":\"Value\"}]"), 0),
+			store.NewPair("zones/example.com/sub/TXT", []byte("[{\"TTL\":3600,\"Payload\":\"SomeOtherValue\"}]"), 0),
+			store.NewPair("zones/example.com/sub/MX", []byte("[{\"Payload\":\"10\\tmx1.example.com\"},{\"Payload\":\"20\\tmx2.example.com\"}]"), 0),
+			store.NewPair("zones/example.com/sub/CNAME", []byte("invalid_json"), 0),
+			store.NewPair("zones/example.com/A", []byte("NoValue"), 0),
+			store.NewPair("zones/example.com/sub", []byte("[{\"TTL\":3600,\"Payload\":\"SomeOtherValue\"}]"), 0),
+			store.NewPair("some/other", []byte("NoValue"), 0),
 		},
 		"example.com",
 		"sub",
 		"ANY",
 		60,
-		[]*iface.Entry{
-			&iface.Entry{"A", 60, "Value"},
-			&iface.Entry{"TXT", 3600, "SomeOtherValue"},
-			&iface.Entry{"MX", 60, "10\tmx1.example.com"},
-			&iface.Entry{"MX", 60, "20\tmx2.example.com"},
+		[]*store.Entry{
+			&store.Entry{"A", 60, "Value"},
+			&store.Entry{"TXT", 3600, "SomeOtherValue"},
+			&store.Entry{"MX", 60, "10\tmx1.example.com"},
+			&store.Entry{"MX", 60, "20\tmx2.example.com"},
 		},
 	},
 	{
-		[]*store.KVPair{
-			&store.KVPair{Key: "zones/example.com/A", Value: []byte("invalid_json")},
-			&store.KVPair{Key: "zones/example.com/sub/A", Value: []byte("NoValue")},
-			&store.KVPair{Key: "some/other", Value: []byte("NoValue")},
+		[]store.Pair{
+			store.NewPair("zones/example.com/A", []byte("invalid_json"), 0),
+			store.NewPair("zones/example.com/sub/A", []byte("NoValue"), 0),
+			store.NewPair("some/other", []byte("NoValue"), 0),
 		},
 		"example.com",
 		"",
@@ -212,10 +188,10 @@ var findZoneEntriesTests = []struct {
 
 func TestFindZoneEntries(t *testing.T) {
 	for _, tt := range findZoneEntriesTests {
-		listFunc := func(directory string) ([]*store.KVPair, error) {
+		listFunc := func(directory string) ([]store.Pair, error) {
 			return tt.entries, nil
 		}
-		kv := &MockKVStore{listFunc: listFunc}
+		kv := &store.MockStore{ListFunc: listFunc}
 		actual, err := findZoneEntries(kv, tt.zone, tt.remainder, tt.filterEntryType, tt.defaultTTL)
 
 		if err != nil {

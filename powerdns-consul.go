@@ -14,13 +14,13 @@ import (
 	"syscall"
 
 	"github.com/Shark/powerdns-consul/backend"
-	"github.com/Shark/powerdns-consul/backend/iface"
+	"github.com/Shark/powerdns-consul/backend/store"
 	"github.com/Shark/powerdns-consul/pdns"
 )
 
 func resolveTransform(resolver *backend.Resolver) func(*pdns.Request) ([]*pdns.Response, error) {
 	return func(request *pdns.Request) (responses []*pdns.Response, err error) {
-		query := &iface.Query{request.Qname, request.Qtype}
+		query := &store.Query{request.Qname, request.Qtype}
 		entries, err := resolver.Resolve(query)
 
 		if err != nil {
@@ -70,7 +70,8 @@ func main() {
 		log.Printf("At least one of DefaultTTL, SoaRefresh, SoaRetry, SoaExpiry or SoaNx is set to zero. Is this what you intended?")
 	}
 
-	resolver := backend.NewResolver(&cfg)
+	kvStore := store.NewLibKVStore(cfg.KVBackend, []string{cfg.KVAddress})
+	resolver := backend.NewResolver(&cfg, kvStore)
 
 	handler := &pdns.Handler{resolveTransform(resolver)}
 

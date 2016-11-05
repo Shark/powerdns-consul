@@ -3,17 +3,17 @@ package backend
 import (
 	"testing"
 
-	"github.com/docker/libkv/store"
+	"github.com/Shark/powerdns-consul/backend/store"
 )
 
 var kvPairNumSegmentsTests = []struct {
-	kvPair   *store.KVPair
+	kvPair   store.Pair
 	expected int
 }{
-	{&store.KVPair{Key: ""}, 1},
-	{&store.KVPair{Key: "abc"}, 1},
-	{&store.KVPair{Key: "abc/def"}, 2},
-	{&store.KVPair{Key: "abc/def/ghi"}, 3},
+	{store.NewPair("", []byte{}, 0), 1},
+	{store.NewPair("abc", []byte{}, 0), 1},
+	{store.NewPair("abc/def", []byte{}, 0), 2},
+	{store.NewPair("abc/def/ghi", []byte{}, 0), 3},
 }
 
 func TestKvPairNumSegments(t *testing.T) {
@@ -26,10 +26,10 @@ func TestKvPairNumSegments(t *testing.T) {
 }
 
 func TestFilterKVPairs(t *testing.T) {
-	pairs := []*store.KVPair{
-		&store.KVPair{Key: "abc/def"},
-		&store.KVPair{Key: "abc/def/ghi"},
-		&store.KVPair{Key: ""},
+	pairs := []store.Pair{
+		store.NewPair("abc/def", []byte{}, 0),
+		store.NewPair("abc/def/ghi", []byte{}, 0),
+		store.NewPair("", []byte{}, 0),
 	}
 
 	actual := filterKVPairs(pairs, 2)
@@ -39,8 +39,8 @@ func TestFilterKVPairs(t *testing.T) {
 	}
 
 	first := actual[0]
-	if first.Key != "abc/def" {
-		t.Errorf("filterKVPairs: expected to return %s, actual: %s", "abc/def", first.Key)
+	if first.Key() != "abc/def" {
+		t.Errorf("filterKVPairs: expected to return %s, actual: %s", "abc/def", first.Key())
 	}
 
 	actual = filterKVPairs(pairs, 1)
@@ -50,8 +50,8 @@ func TestFilterKVPairs(t *testing.T) {
 	}
 
 	first = actual[0]
-	if first.Key != "" {
-		t.Errorf("filterKVPairs: expected to return %s, actual: %s", "", first.Key)
+	if first.Key() != "" {
+		t.Errorf("filterKVPairs: expected to return %s, actual: %s", "", first.Key())
 	}
 
 	actual = filterKVPairs(pairs, 0)
