@@ -1,11 +1,11 @@
-package consul
+package backend
 
 import (
 	"reflect"
 	"sort"
 	"testing"
 
-	"github.com/Shark/powerdns-consul/consul/iface"
+	"github.com/Shark/powerdns-consul/backend/iface"
 	"github.com/docker/libkv/store"
 )
 

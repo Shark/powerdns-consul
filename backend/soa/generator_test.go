@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Shark/powerdns-consul/consul/iface"
+	"github.com/Shark/powerdns-consul/backend/iface"
 	"github.com/docker/libkv/store"
 )
 

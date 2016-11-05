@@ -1,4 +1,4 @@
-package consul
+package backend
 
 import (
 	"encoding/json"
@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Shark/powerdns-consul/consul/iface"
-	"github.com/Shark/powerdns-consul/consul/soa"
+	"github.com/Shark/powerdns-consul/backend/iface"
+	"github.com/Shark/powerdns-consul/backend/soa"
 	"github.com/docker/libkv"
 	"github.com/docker/libkv/store"
 	"github.com/docker/libkv/store/consul"

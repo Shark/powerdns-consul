@@ -13,14 +13,14 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/Shark/powerdns-consul/consul"
-	consulIface "github.com/Shark/powerdns-consul/consul/iface"
+	"github.com/Shark/powerdns-consul/backend"
+	"github.com/Shark/powerdns-consul/backend/iface"
 	"github.com/Shark/powerdns-consul/pdns"
 )
 
-func resolveTransform(resolver *consul.Resolver) func(*pdns.Request) ([]*pdns.Response, error) {
+func resolveTransform(resolver *backend.Resolver) func(*pdns.Request) ([]*pdns.Response, error) {
 	return func(request *pdns.Request) (responses []*pdns.Response, err error) {
-		query := &consulIface.Query{request.Qname, request.Qtype}
+		query := &iface.Query{request.Qname, request.Qtype}
 		entries, err := resolver.Resolve(query)
 
 		if err != nil {
@@ -60,7 +60,7 @@ func main() {
 		log.Fatalf("Unable to read config file from %s: %v", *configFilePath, err)
 	}
 
-	var cfg consul.ResolverConfig = consul.ResolverConfig{DefaultTTL: 60, SoaRefresh: 1200, SoaRetry: 180, SoaExpiry: 1209600, SoaNx: 60}
+	var cfg backend.ResolverConfig = backend.ResolverConfig{DefaultTTL: 60, SoaRefresh: 1200, SoaRetry: 180, SoaExpiry: 1209600, SoaNx: 60}
 	err = json.Unmarshal(configFileContents, &cfg)
 	if err != nil {
 		log.Fatalf("Unable to read config file from: %s: %v", *configFilePath, err)
@@ -70,7 +70,7 @@ func main() {
 		log.Printf("At least one of DefaultTTL, SoaRefresh, SoaRetry, SoaExpiry or SoaNx is set to zero. Is this what you intended?")
 	}
 
-	resolver := consul.NewResolver(&cfg)
+	resolver := backend.NewResolver(&cfg)
 
 	handler := &pdns.Handler{resolveTransform(resolver)}
 
