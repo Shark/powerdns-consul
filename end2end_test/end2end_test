@@ -19,10 +19,13 @@ dns_test() {
 }
 
 main() {
-  /usr/local/bin/consul agent -config-dir=/etc/consul &
+  declare kv="$1"
+  . "/test/$kv/test.bash"
+  test_prepare
+
   /usr/sbin/pdns_server &
 
-  # let Consul and PowerDNS initialize themselves
+  # let PowerDNS and the KV store initialize
   sleep 3
 
   consul_kv_set "zones/example.com/A" '[{"Payload": "127.0.0.1"}]'
