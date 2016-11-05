@@ -1,11 +1,6 @@
 #/usr/bin/env bash
 set -euo pipefail
 
-consul_kv_set() {
-  declare key="$1"
-  declare value="$2"
-  curl -s -f -X PUT -d "$value" "http://127.0.0.1:8500/v1/kv/$key" > /dev/null
-}
 
 dns_test() {
   declare query="$1"
@@ -25,13 +20,7 @@ main() {
 
   /usr/sbin/pdns_server &
 
-  # let PowerDNS and the KV store initialize
-  sleep 3
-
-  consul_kv_set "zones/example.com/A" '[{"Payload": "127.0.0.1"}]'
-  consul_kv_set "zones/example.com/MX" '[{"Payload": "10\tmx1.example.com"},{"Payload": "20\tmx2.example.com"}]'
-  consul_kv_set "zones/example.com/mx1/A" '[{"Payload": "127.0.0.2"}]'
-  consul_kv_set "zones/example.com/mx2/A" '[{"Payload": "127.0.0.3"}]'
+  sleep 2
 
   dns_test "example.com A" "127.0.0.1"
   dns_test "example.com MX" "10 mx1.example.com.

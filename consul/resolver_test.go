@@ -2,6 +2,7 @@ package consul
 
 import (
 	"reflect"
+	"sort"
 	"testing"
 
 	"github.com/Shark/powerdns-consul/consul/iface"
@@ -35,21 +36,22 @@ func TestAllZones(t *testing.T) {
 	listFunc := func(directory string) ([]*store.KVPair, error) {
 		return []*store.KVPair{
 			&store.KVPair{Key: "zones/a/"},
-			&store.KVPair{Key: "zones/b/"},
-			&store.KVPair{Key: "zones/c/"},
+			&store.KVPair{Key: "zones/b/A"},
+			&store.KVPair{Key: "zones/c/sub/A"},
 			&store.KVPair{Key: "zones/d"},
 			&store.KVPair{Key: "zones"},
 			&store.KVPair{Key: ""},
 		}, nil
 	}
 	kv := &MockKVStore{listFunc: listFunc}
-	expected := []string{"a", "b", "c"}
+	expected := []string{"a", "b", "c", "d"}
 	actual, err := allZones(kv)
 
 	if err != nil {
 		t.Errorf("TestAllZones: unexpected error %v", err)
 	}
 
+	sort.Strings(actual)
 	if !reflect.DeepEqual(expected, actual) {
 		t.Errorf("TestAllZones: expected %v, actual %v", expected, actual)
 	}

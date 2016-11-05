@@ -8,4 +8,8 @@ GOOS=linux GOARCH=amd64 make
 cp powerdns-consul "$DIR/"
 cd "$DIR"
 ./build
-docker run -i --rm -e DEBUG=1 sh4rk/powerdns-consul-end2end consul
+
+for backend in consul etcd; do
+  echo "Testing with backend $backend"
+  docker run -it --rm -e DEBUG=1 sh4rk/powerdns-consul-end2end "$backend"
+done

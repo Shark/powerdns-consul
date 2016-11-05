@@ -87,7 +87,6 @@ func (g *Generator) tryToRetrieveOrCreateSOAEntry(kv iface.KVStore, zone string)
 	}
 
 	rev := soaRevision{}
-	var casModifyIndex uint64 = 0
 
 	if revEntryPair != nil { // use existing revision
 		err = json.Unmarshal(revEntryPair.Value, &rev)
@@ -95,8 +94,6 @@ func (g *Generator) tryToRetrieveOrCreateSOAEntry(kv iface.KVStore, zone string)
 		if err != nil {
 			return nil, err
 		}
-
-		casModifyIndex = revEntryPair.LastIndex
 
 		if rev.SnModifyIndex != lastModifyIndex {
 			// update the modify index
@@ -123,7 +120,7 @@ func (g *Generator) tryToRetrieveOrCreateSOAEntry(kv iface.KVStore, zone string)
 		return nil, err
 	}
 
-	ok, _, err := kv.AtomicPut(key, json, &store.KVPair{LastIndex: casModifyIndex}, nil)
+	ok, _, err := kv.AtomicPut(key, json, revEntryPair, nil)
 
 	if err != nil || !ok {
 		return nil, err

@@ -12,6 +12,7 @@ import (
 	"github.com/docker/libkv"
 	"github.com/docker/libkv/store"
 	"github.com/docker/libkv/store/consul"
+	"github.com/docker/libkv/store/etcd"
 )
 
 type Resolver struct {
@@ -37,20 +38,33 @@ type value struct {
 }
 
 func allZones(kv iface.KVStore) (zones []string, err error) {
+	// backends behavior is inconsistent:
+	// say a key exists at zones/example.invalid/A
+	// - consul will return a pair with key zones/example.invalid/A
+	// - etcd will return a pair with key zones/example.invalid
 	pairs, err := kv.List("zones")
 
 	if err != nil {
 		return nil, err
 	}
 
-	for _, pair := range pairs {
-		tokens := strings.Split(pair.Key, "/")
+	var zonesMap = make(map[string]bool)
 
-		if len(tokens) != 3 {
+	for _, pair := range pairs {
+		tokens := strings.Split(normalizeKey(pair.Key), "/")
+
+		if len(tokens) < 2 {
 			continue
 		}
 
-		zones = append(zones, tokens[1])
+		zonesMap[tokens[1]] = true
+	}
+
+	zones = make([]string, len(zonesMap))
+	i := 0
+	for key := range zonesMap {
+		zones[i] = key
+		i++
 	}
 
 	return zones, nil
@@ -137,7 +151,7 @@ func findZoneEntries(kv iface.KVStore, zone string, remainder string, filter_ent
 	}
 
 	for _, pair := range pairs {
-		entry_type_tokens := strings.Split(pair.Key, "/")
+		entry_type_tokens := strings.Split(normalizeKey(pair.Key), "/")
 		entry_type := entry_type_tokens[len(entry_type_tokens)-1]
 
 		if filter_entry_type == "ANY" || entry_type == filter_entry_type {
@@ -145,7 +159,7 @@ func findZoneEntries(kv iface.KVStore, zone string, remainder string, filter_ent
 			err = json.Unmarshal(pair.Value, &values_in_entry)
 
 			if err != nil {
-				log.Printf("Discarding key %s: %v", pair.Key, err)
+				log.Printf("Discarding key %s: %v", normalizeKey(pair.Key), err)
 				continue
 			}
 
@@ -158,7 +172,7 @@ func findZoneEntries(kv iface.KVStore, zone string, remainder string, filter_ent
 				}
 
 				if value.Payload == nil {
-					log.Printf("Discarding entry in key %s because payload is missing", pair.Key)
+					log.Printf("Discarding entry in key %s because payload is missing", normalizeKey(pair.Key))
 					continue
 				}
 
@@ -173,6 +187,7 @@ func findZoneEntries(kv iface.KVStore, zone string, remainder string, filter_ent
 
 func NewResolver(config *ResolverConfig) *Resolver {
 	consul.Register()
+	etcd.Register()
 
 	client, err := libkv.NewStore(
 		store.Backend(config.KVBackend),

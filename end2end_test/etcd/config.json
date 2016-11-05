@@ -1,0 +1,6 @@
+{
+  "Hostname": "srv1.example.com.",
+  "HostmasterEmailAddress": "hostmaster.srv1.example.com.",
+  "KVBackend": "etcd",
+  "KVAddress": "127.0.0.1:2379"
+}
