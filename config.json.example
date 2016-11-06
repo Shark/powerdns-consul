@@ -1,6 +1,9 @@
 {
   "Hostname": "srv1.example.com.",
   "HostmasterEmailAddress": "hostmaster.srv1.example.com.",
-  "KVBackend": "consul",
-  "KVAddress": "127.0.0.1:8500"
+  "Schemas": [{
+    "Name": "flat",
+    "KVBackend": "consul",
+    "KVAddress": "127.0.0.1:8500"
+  }]
 }

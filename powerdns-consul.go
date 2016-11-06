@@ -23,8 +23,7 @@ import (
 type Config struct {
 	Hostname               string
 	HostmasterEmailAddress string
-	KVBackend              string
-	KVAddress              string
+	Schemas                []SchemaConfig
 	DefaultTTL             uint32
 	SoaRefresh             int32
 	SoaRetry               int32
@@ -32,40 +31,58 @@ type Config struct {
 	SoaNx                  int32
 }
 
-func resolveTransform(config Config, curStore store.Store, schema schema.Schema) func(*pdns.Request) ([]*pdns.Response, error) {
+type SchemaConfig struct {
+	Name      string
+	KVBackend string
+	KVAddress string
+}
+
+func resolveTransform(config Config, schemas []schema.Schema) func(*pdns.Request) ([]*pdns.Response, error) {
 	return func(request *pdns.Request) (responses []*pdns.Response, err error) {
 		query := &store.Query{request.Qname, request.Qtype}
-		entries, err := schema.Resolve(query)
+		var entries []*store.Entry
 
-		if err != nil {
-			return nil, err
-		}
-
-		hasZone, err := schema.HasZone(request.Qname)
-
-		if err != nil {
-			return nil, err
-		}
-
-		if hasZone && (query.Type == "ANY" || query.Type == "SOA") {
-			generatorCfg := &soa.GeneratorConfig{
-				SoaNameServer: config.Hostname,
-				SoaEmailAddr:  config.HostmasterEmailAddress,
-				SoaRefresh:    config.SoaRefresh,
-				SoaRetry:      config.SoaRetry,
-				SoaExpiry:     config.SoaExpiry,
-				SoaNx:         config.SoaNx,
-				DefaultTTL:    config.DefaultTTL,
-			}
-			generator := soa.NewGenerator(generatorCfg, time.Now())
-			entry, err := generator.RetrieveOrCreateSOAEntry(curStore, request.Qname)
+		for _, schema := range schemas {
+			schemaEntries, err := schema.Resolve(query)
 
 			if err != nil {
-				return nil, err
+				log.Printf("Schema could not resolve %v: %v", query, err)
+				continue
 			}
 
-			if entry != nil {
-				entries = append([]*store.Entry{entry}, entries...)
+			entries = append(entries, schemaEntries...)
+		}
+
+		if query.Type == "ANY" || query.Type == "SOA" {
+			for _, schema := range schemas {
+				hasZone, hasZoneErr := schema.HasZone(request.Qname)
+
+				if hasZoneErr != nil {
+					log.Printf("Schema could not tell if it has zone %s: %v", request.Qname, hasZoneErr)
+					continue
+				}
+
+				if hasZone {
+					generatorCfg := &soa.GeneratorConfig{
+						SoaNameServer: config.Hostname,
+						SoaEmailAddr:  config.HostmasterEmailAddress,
+						SoaRefresh:    config.SoaRefresh,
+						SoaRetry:      config.SoaRetry,
+						SoaExpiry:     config.SoaExpiry,
+						SoaNx:         config.SoaNx,
+						DefaultTTL:    config.DefaultTTL,
+					}
+					generator := soa.NewGenerator(generatorCfg, time.Now())
+					entry, err := generator.RetrieveOrCreateSOAEntry(schema.Store(), request.Qname)
+
+					if err != nil {
+						log.Printf("Schema %v failed to generate SOA entry: %v", schema, err)
+					} else {
+						entries = append(entries, entry)
+					}
+
+					break
+				}
 			}
 		}
 
@@ -106,18 +123,35 @@ func main() {
 	err = json.Unmarshal(configFileContents, &cfg)
 	if err != nil {
 		log.Fatalf("Unable to read config file from: %s: %v", *configFilePath, err)
-	} else if cfg.Hostname == "" || cfg.HostmasterEmailAddress == "" || cfg.KVBackend == "" || cfg.KVAddress == "" {
+	} else if cfg.Hostname == "" || cfg.HostmasterEmailAddress == "" {
 		log.Fatal("Required settings Hostname, HostmasterEmailAddress, KVBackend or KVAddress not set in config file")
+	} else if len(cfg.Schemas) == 0 {
+		log.Fatal("No schemas are defined in config file")
 	} else if cfg.DefaultTTL == 0 || cfg.SoaRefresh == 0 || cfg.SoaRetry == 0 || cfg.SoaExpiry == 0 || cfg.SoaNx == 0 {
 		log.Printf("At least one of DefaultTTL, SoaRefresh, SoaRetry, SoaExpiry or SoaNx is set to zero. Is this what you intended?")
 	}
 
-	kvStore := store.NewLibKVStore(cfg.KVBackend, []string{cfg.KVAddress})
-	kvSchema := schema.NewFlatSchema(kvStore, cfg.DefaultTTL)
+	var schemas []schema.Schema
+	for _, schemaConfig := range cfg.Schemas {
+		kvStore, err := store.NewLibKVStore(schemaConfig.KVBackend, []string{schemaConfig.KVAddress})
 
-	handler := &pdns.Handler{resolveTransform(cfg, kvStore, kvSchema)}
+		if err != nil {
+			log.Printf("Unable to create kv store for schema %v: %v", schemaConfig, err)
+			continue
+		}
+
+		curSchema, err := schema.NewSchema(schemaConfig.Name, kvStore, cfg.DefaultTTL)
+
+		if err != nil {
+			log.Printf("Unable to create schema for %v: %v", schemaConfig, err)
+			continue
+		}
+
+		schemas = append(schemas, curSchema)
+	}
 
 	inChan, outChan, quitChan := make(chan []byte), make(chan []byte), make(chan bool)
+	handler := &pdns.Handler{resolveTransform(cfg, schemas)}
 
 	go func() {
 		handler.Handle(inChan, outChan)

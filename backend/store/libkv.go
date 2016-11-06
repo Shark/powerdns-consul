@@ -1,15 +1,13 @@
 package store
 
 import (
-	"log"
-
 	"github.com/docker/libkv"
 	libkvStore "github.com/docker/libkv/store"
 	"github.com/docker/libkv/store/consul"
 	"github.com/docker/libkv/store/etcd"
 )
 
-func NewLibKVStore(kvBackend string, kvAddress []string) Store {
+func NewLibKVStore(kvBackend string, kvAddress []string) (Store, error) {
 	consul.Register()
 	etcd.Register()
 
@@ -20,10 +18,10 @@ func NewLibKVStore(kvBackend string, kvAddress []string) Store {
 	)
 
 	if err != nil {
-		log.Panicf("Unable to instantiate libkv client: %v", err)
+		return nil, err
 	}
 
-	return &LibKVStore{client}
+	return &LibKVStore{client}, nil
 }
 
 type LibKVStore struct {

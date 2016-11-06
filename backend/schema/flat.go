@@ -59,6 +59,10 @@ func (flat *FlatSchema) HasZone(zone string) (bool, error) {
 	return false, nil
 }
 
+func (flat *FlatSchema) Store() store.Store {
+	return flat.store
+}
+
 type value struct {
 	TTL     *uint32
 	Payload *string
