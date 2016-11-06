@@ -1,4 +1,4 @@
-package backend
+package schema
 
 import (
 	"reflect"
@@ -21,7 +21,7 @@ func TestAllZones(t *testing.T) {
 	}
 	kv := store.MockStore{ListFunc: listFunc}
 	expected := []string{"a", "b", "c", "d"}
-	actual, err := allZones(kv)
+	actual, err := (&FlatSchema{kv, 3600}).allZones(kv)
 
 	if err != nil {
 		t.Errorf("TestAllZones: unexpected error %v", err)
@@ -58,7 +58,7 @@ var findZoneTests = []struct {
 
 func TestFindZone(t *testing.T) {
 	for _, tt := range findZoneTests {
-		actualZone, actualRemainder := findZone(tt.zones, tt.name)
+		actualZone, actualRemainder := (&FlatSchema{nil, 3600}).findZone(tt.zones, tt.name)
 
 		if actualZone != tt.expectedZone || actualRemainder != tt.expectedRemainder {
 			t.Errorf("TestFindZone: actual %s %s, expected %s %s", actualZone, actualRemainder, tt.expectedZone, tt.expectedRemainder)
@@ -110,7 +110,7 @@ func TestFindKVPairsForZone(t *testing.T) {
 			return tt.entries, nil
 		}
 		kv := &store.MockStore{ListFunc: listFunc}
-		actual, err := findKVPairsForZone(kv, tt.zone, tt.remainder)
+		actual, err := (&FlatSchema{kv, 3600}).findKVPairsForZone(kv, tt.zone, tt.remainder)
 
 		if err != nil {
 			t.Errorf("TestFindKVPairsForZone: unexpected error %v", err)
@@ -192,7 +192,7 @@ func TestFindZoneEntries(t *testing.T) {
 			return tt.entries, nil
 		}
 		kv := &store.MockStore{ListFunc: listFunc}
-		actual, err := findZoneEntries(kv, tt.zone, tt.remainder, tt.filterEntryType, tt.defaultTTL)
+		actual, err := (&FlatSchema{kv, 3600}).findZoneEntries(kv, tt.zone, tt.remainder, tt.filterEntryType, tt.defaultTTL)
 
 		if err != nil {
 			t.Errorf("TestFindZoneEntries: unexpected error %v", err)
@@ -207,5 +207,60 @@ func TestFindZoneEntries(t *testing.T) {
 				t.Errorf("TestFindZoneEntries: actual %d entries, expected 0", len(actual))
 			}
 		}
+	}
+}
+
+var kvPairNumSegmentsTests = []struct {
+	kvPair   store.Pair
+	expected int
+}{
+	{store.NewPair("", []byte{}, 0), 1},
+	{store.NewPair("abc", []byte{}, 0), 1},
+	{store.NewPair("abc/def", []byte{}, 0), 2},
+	{store.NewPair("abc/def/ghi", []byte{}, 0), 3},
+}
+
+func TestKvPairNumSegments(t *testing.T) {
+	for _, tt := range kvPairNumSegmentsTests {
+		actual := (&FlatSchema{nil, 3600}).kvPairNumSegments(tt.kvPair)
+		if actual != tt.expected {
+			t.Errorf("kvPairNumSegments(%v): expected %d, actual %d", tt.kvPair, tt.expected, actual)
+		}
+	}
+}
+
+func TestFilterKVPairs(t *testing.T) {
+	pairs := []store.Pair{
+		store.NewPair("abc/def", []byte{}, 0),
+		store.NewPair("abc/def/ghi", []byte{}, 0),
+		store.NewPair("", []byte{}, 0),
+	}
+
+	actual := (&FlatSchema{nil, 3600}).filterKVPairs(pairs, 2)
+
+	if len(actual) != 1 {
+		t.Errorf("filterKVPairs: expected len %d, actual %d", 1, len(actual))
+	}
+
+	first := actual[0]
+	if first.Key() != "abc/def" {
+		t.Errorf("filterKVPairs: expected to return %s, actual: %s", "abc/def", first.Key())
+	}
+
+	actual = (&FlatSchema{nil, 3600}).filterKVPairs(pairs, 1)
+
+	if len(actual) != 1 {
+		t.Errorf("filterKVPairs: expected len %d, actual %d", 1, len(actual))
+	}
+
+	first = actual[0]
+	if first.Key() != "" {
+		t.Errorf("filterKVPairs: expected to return %s, actual: %s", "", first.Key())
+	}
+
+	actual = (&FlatSchema{nil, 3600}).filterKVPairs(pairs, 0)
+
+	if len(actual) != 0 {
+		t.Errorf("filterKVPairs: expected len %d, actual %d", 0, len(actual))
 	}
 }

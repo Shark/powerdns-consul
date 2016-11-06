@@ -1,31 +1,62 @@
-package backend
+package schema
 
 import (
 	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
-	"time"
 
-	"github.com/Shark/powerdns-consul/backend/soa"
 	"github.com/Shark/powerdns-consul/backend/store"
 )
 
-type Resolver struct {
-	Config *ResolverConfig
-	kv     store.Store
+type FlatSchema struct {
+	store      store.Store
+	defaultTTL uint32
 }
 
-type ResolverConfig struct {
-	Hostname               string
-	HostmasterEmailAddress string
-	KVBackend              string
-	KVAddress              string
-	DefaultTTL             uint32
-	SoaRefresh             int32
-	SoaRetry               int32
-	SoaExpiry              int32
-	SoaNx                  int32
+func NewFlatSchema(store store.Store, defaultTTL uint32) Schema {
+	return &FlatSchema{store, defaultTTL}
+}
+
+func (flat *FlatSchema) Resolve(query *store.Query) (entries []*store.Entry, err error) {
+	zones, err := flat.allZones(flat.store)
+
+	if err != nil {
+		return nil, err
+	}
+
+	zone, remainder := flat.findZone(zones, query.Name)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if zone == "" {
+		return make([]*store.Entry, 0), nil
+	}
+
+	entries, err = flat.findZoneEntries(flat.store, zone, remainder, query.Type, flat.defaultTTL)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return entries, nil
+}
+
+func (flat *FlatSchema) HasZone(zone string) (bool, error) {
+	zones, err := flat.allZones(flat.store)
+	if err != nil {
+		return false, err
+	}
+
+	for _, curZone := range zones {
+		if curZone == zone {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 type value struct {
@@ -33,7 +64,7 @@ type value struct {
 	Payload *string
 }
 
-func allZones(kv store.Store) (zones []string, err error) {
+func (flat *FlatSchema) allZones(kv store.Store) (zones []string, err error) {
 	// backends behavior is inconsistent:
 	// say a key exists at zones/example.invalid/A
 	// - consul will return a pair with key zones/example.invalid/A
@@ -66,7 +97,7 @@ func allZones(kv store.Store) (zones []string, err error) {
 	return zones, nil
 }
 
-func findZone(zones []string, name string) (zone string, remainder string) {
+func (flat *FlatSchema) findZone(zones []string, name string) (zone string, remainder string) {
 	// name is expected to conform to a format like "name.example.com."
 	normalizedName := strings.ToLower(name)
 	tokens := strings.Split(normalizedName, ".")
@@ -116,7 +147,7 @@ func findZone(zones []string, name string) (zone string, remainder string) {
 	return zone, remainder
 }
 
-func findKVPairsForZone(kv store.Store, zone string, remainder string) ([]store.Pair, error) {
+func (flat *FlatSchema) findKVPairsForZone(kv store.Store, zone string, remainder string) ([]store.Pair, error) {
 	var (
 		prefix      string
 		numSegments int
@@ -136,11 +167,11 @@ func findKVPairsForZone(kv store.Store, zone string, remainder string) ([]store.
 		return nil, err
 	}
 
-	return filterKVPairs(unfilteredPairs, numSegments), nil
+	return flat.filterKVPairs(unfilteredPairs, numSegments), nil
 }
 
-func findZoneEntries(kv store.Store, zone string, remainder string, filter_entry_type string, defaultTTL uint32) (entries []*store.Entry, err error) {
-	pairs, err := findKVPairsForZone(kv, zone, remainder)
+func (flat *FlatSchema) findZoneEntries(kv store.Store, zone string, remainder string, filter_entry_type string, defaultTTL uint32) (entries []*store.Entry, err error) {
+	pairs, err := flat.findKVPairsForZone(kv, zone, remainder)
 
 	if err != nil {
 		return nil, err
@@ -181,52 +212,18 @@ func findZoneEntries(kv store.Store, zone string, remainder string, filter_entry
 	return entries, nil
 }
 
-func NewResolver(config *ResolverConfig, kvStore store.Store) *Resolver {
-	return &Resolver{config, kvStore}
+func (flat *FlatSchema) filterKVPairs(pairs []store.Pair, numSegments int) []store.Pair {
+	var resultPairs []store.Pair
+
+	for _, pair := range pairs {
+		if flat.kvPairNumSegments(pair) == numSegments {
+			resultPairs = append(resultPairs, pair)
+		}
+	}
+
+	return resultPairs
 }
 
-func (cr *Resolver) Resolve(query *store.Query) (entries []*store.Entry, err error) {
-	zones, err := allZones(cr.kv)
-
-	if err != nil {
-		return nil, err
-	}
-
-	zone, remainder := findZone(zones, query.Name)
-
-	if err != nil {
-		return nil, err
-	}
-
-	if zone == "" {
-		return make([]*store.Entry, 0), nil
-	}
-
-	entries, err = findZoneEntries(cr.kv, zone, remainder, query.Type, cr.Config.DefaultTTL)
-
-	if err != nil {
-		return nil, err
-	}
-
-	if remainder == "" && (query.Type == "ANY" || query.Type == "SOA") {
-		generatorCfg := &soa.GeneratorConfig{SoaNameServer: cr.Config.Hostname,
-			SoaEmailAddr: cr.Config.HostmasterEmailAddress,
-			SoaRefresh:   cr.Config.SoaRefresh,
-			SoaRetry:     cr.Config.SoaRetry,
-			SoaExpiry:    cr.Config.SoaExpiry,
-			SoaNx:        cr.Config.SoaNx,
-			DefaultTTL:   cr.Config.DefaultTTL}
-		generator := soa.NewGenerator(generatorCfg, time.Now())
-		entry, err := generator.RetrieveOrCreateSOAEntry(cr.kv, zone)
-
-		if err != nil {
-			return nil, err
-		}
-
-		if entry != nil {
-			entries = append([]*store.Entry{entry}, entries...)
-		}
-	}
-
-	return entries, nil
+func (flat *FlatSchema) kvPairNumSegments(pair store.Pair) int {
+	return len(strings.Split(pair.Key(), "/"))
 }

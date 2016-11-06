@@ -12,19 +12,61 @@ import (
 	"strconv"
 	"sync"
 	"syscall"
+	"time"
 
-	"github.com/Shark/powerdns-consul/backend"
+	"github.com/Shark/powerdns-consul/backend/schema"
+	"github.com/Shark/powerdns-consul/backend/soa"
 	"github.com/Shark/powerdns-consul/backend/store"
 	"github.com/Shark/powerdns-consul/pdns"
 )
 
-func resolveTransform(resolver *backend.Resolver) func(*pdns.Request) ([]*pdns.Response, error) {
+type Config struct {
+	Hostname               string
+	HostmasterEmailAddress string
+	KVBackend              string
+	KVAddress              string
+	DefaultTTL             uint32
+	SoaRefresh             int32
+	SoaRetry               int32
+	SoaExpiry              int32
+	SoaNx                  int32
+}
+
+func resolveTransform(config Config, curStore store.Store, schema schema.Schema) func(*pdns.Request) ([]*pdns.Response, error) {
 	return func(request *pdns.Request) (responses []*pdns.Response, err error) {
 		query := &store.Query{request.Qname, request.Qtype}
-		entries, err := resolver.Resolve(query)
+		entries, err := schema.Resolve(query)
 
 		if err != nil {
 			return nil, err
+		}
+
+		hasZone, err := schema.HasZone(request.Qname)
+
+		if err != nil {
+			return nil, err
+		}
+
+		if hasZone && (query.Type == "ANY" || query.Type == "SOA") {
+			generatorCfg := &soa.GeneratorConfig{
+				SoaNameServer: config.Hostname,
+				SoaEmailAddr:  config.HostmasterEmailAddress,
+				SoaRefresh:    config.SoaRefresh,
+				SoaRetry:      config.SoaRetry,
+				SoaExpiry:     config.SoaExpiry,
+				SoaNx:         config.SoaNx,
+				DefaultTTL:    config.DefaultTTL,
+			}
+			generator := soa.NewGenerator(generatorCfg, time.Now())
+			entry, err := generator.RetrieveOrCreateSOAEntry(curStore, request.Qname)
+
+			if err != nil {
+				return nil, err
+			}
+
+			if entry != nil {
+				entries = append([]*store.Entry{entry}, entries...)
+			}
 		}
 
 		responses = make([]*pdns.Response, len(entries))
@@ -60,7 +102,7 @@ func main() {
 		log.Fatalf("Unable to read config file from %s: %v", *configFilePath, err)
 	}
 
-	var cfg backend.ResolverConfig = backend.ResolverConfig{DefaultTTL: 60, SoaRefresh: 1200, SoaRetry: 180, SoaExpiry: 1209600, SoaNx: 60}
+	cfg := Config{DefaultTTL: 60, SoaRefresh: 1200, SoaRetry: 180, SoaExpiry: 1209600, SoaNx: 60}
 	err = json.Unmarshal(configFileContents, &cfg)
 	if err != nil {
 		log.Fatalf("Unable to read config file from: %s: %v", *configFilePath, err)
@@ -71,9 +113,9 @@ func main() {
 	}
 
 	kvStore := store.NewLibKVStore(cfg.KVBackend, []string{cfg.KVAddress})
-	resolver := backend.NewResolver(&cfg, kvStore)
+	kvSchema := schema.NewFlatSchema(kvStore, cfg.DefaultTTL)
 
-	handler := &pdns.Handler{resolveTransform(resolver)}
+	handler := &pdns.Handler{resolveTransform(cfg, kvStore, kvSchema)}
 
 	inChan, outChan, quitChan := make(chan []byte), make(chan []byte), make(chan bool)
 
