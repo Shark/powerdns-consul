@@ -1,5 +1,7 @@
 package store
 
+import "strings"
+
 type Pair interface {
 	Key() string
 	Value() []byte
@@ -17,7 +19,7 @@ type PairImpl struct {
 }
 
 func (p *PairImpl) Key() string {
-	return p.key
+	return normalizeKey(p.key)
 }
 
 func (p *PairImpl) Value() []byte {
@@ -26,4 +28,8 @@ func (p *PairImpl) Value() []byte {
 
 func (p *PairImpl) LastIndex() uint64 {
 	return p.lastIndex
+}
+
+func normalizeKey(key string) string {
+	return strings.TrimSuffix(strings.TrimPrefix(key, "/"), "/")
 }

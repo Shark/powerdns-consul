@@ -19,9 +19,5 @@ func filterKVPairs(pairs []store.Pair, numSegments int) []store.Pair {
 }
 
 func kvPairNumSegments(pair store.Pair) int {
-	return len(strings.Split(normalizeKey(pair.Key()), "/"))
-}
-
-func normalizeKey(key string) string {
-	return strings.TrimSuffix(strings.TrimPrefix(key, "/"), "/")
+	return len(strings.Split(pair.Key(), "/"))
 }

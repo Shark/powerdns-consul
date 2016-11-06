@@ -47,7 +47,7 @@ func allZones(kv store.Store) (zones []string, err error) {
 	var zonesMap = make(map[string]bool)
 
 	for _, pair := range pairs {
-		tokens := strings.Split(normalizeKey(pair.Key()), "/")
+		tokens := strings.Split(pair.Key(), "/")
 
 		if len(tokens) < 2 {
 			continue
@@ -147,7 +147,7 @@ func findZoneEntries(kv store.Store, zone string, remainder string, filter_entry
 	}
 
 	for _, pair := range pairs {
-		entry_type_tokens := strings.Split(normalizeKey(pair.Key()), "/")
+		entry_type_tokens := strings.Split(pair.Key(), "/")
 		entry_type := entry_type_tokens[len(entry_type_tokens)-1]
 
 		if filter_entry_type == "ANY" || entry_type == filter_entry_type {
@@ -155,7 +155,7 @@ func findZoneEntries(kv store.Store, zone string, remainder string, filter_entry
 			err = json.Unmarshal(pair.Value(), &values_in_entry)
 
 			if err != nil {
-				log.Printf("Discarding key %s: %v", normalizeKey(pair.Key()), err)
+				log.Printf("Discarding key %s: %v", pair.Key(), err)
 				continue
 			}
 
@@ -168,7 +168,7 @@ func findZoneEntries(kv store.Store, zone string, remainder string, filter_entry
 				}
 
 				if value.Payload == nil {
-					log.Printf("Discarding entry in key %s because payload is missing", normalizeKey(pair.Key()))
+					log.Printf("Discarding entry in key %s because payload is missing", pair.Key())
 					continue
 				}
 
