@@ -1,0 +1,38 @@
+# github.com/armon/go-metrics v0.0.0-20180917152333-f0300d1749da
+github.com/armon/go-metrics
+# github.com/coreos/etcd v3.1.0-rc.0.0.20161105055942-ecd4803ccc6a+incompatible
+## explicit
+github.com/coreos/etcd/client
+github.com/coreos/etcd/pkg/pathutil
+github.com/coreos/etcd/pkg/types
+# github.com/docker/libkv v0.2.2-0.20160826060701-3fce6a0f26e0
+## explicit
+github.com/docker/libkv
+github.com/docker/libkv/store
+github.com/docker/libkv/store/consul
+github.com/docker/libkv/store/etcd
+# github.com/hashicorp/consul v0.6.5-0.20160420171606-963916e990bc
+## explicit
+github.com/hashicorp/consul/api
+# github.com/hashicorp/go-cleanhttp v0.5.2
+## explicit
+github.com/hashicorp/go-cleanhttp
+# github.com/hashicorp/go-immutable-radix v1.0.0
+github.com/hashicorp/go-immutable-radix
+# github.com/hashicorp/go-msgpack v1.1.5
+## explicit
+# github.com/hashicorp/golang-lru v0.5.4
+## explicit
+github.com/hashicorp/golang-lru/simplelru
+# github.com/hashicorp/hcl v1.0.0
+## explicit
+# github.com/hashicorp/serf v0.9.5
+## explicit
+github.com/hashicorp/serf/coordinate
+# github.com/stretchr/testify v1.7.0
+## explicit
+# github.com/ugorji/go v0.0.0-20160928015244-faddd6128c66
+## explicit
+github.com/ugorji/go/codec
+# golang.org/x/net v0.0.0-20190923162816-aa69164e4478
+golang.org/x/net/context
